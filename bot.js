@@ -27,7 +27,7 @@ bot.command("pay", async (ctx) => {
 
   try {
     const response = await axios.post(
-      "http://localhost:3000/api/create-session",
+      "https://tgbot-backend-fewy.onrender.com/api/create-session",
       {
         orderNumber: `bot-${Date.now()}`,
         amount: parseFloat(amount),
