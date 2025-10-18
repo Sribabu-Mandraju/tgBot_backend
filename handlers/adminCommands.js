@@ -117,10 +117,9 @@ export function handleListAdminsCommand(ctx, adminManager) {
 // ADMIN ACCESS CONTROL
 // ============================================================================
 
-export function requireAdminAccess(handler) {
+export function requireAdminAccess(handler, adminManager) {
   return (ctx, ...args) => {
     const userId = ctx.from.id;
-    const adminManager = args[0]; // Assuming adminManager is first argument
 
     if (!adminManager.isAdmin(userId)) {
       return ctx.reply(ERROR_MESSAGES.ACCESS_DENIED);
@@ -130,10 +129,9 @@ export function requireAdminAccess(handler) {
   };
 }
 
-export function requireMasterAdminAccess(handler) {
+export function requireMasterAdminAccess(handler, adminManager) {
   return (ctx, ...args) => {
     const userId = ctx.from.id;
-    const adminManager = args[0]; // Assuming adminManager is first argument
 
     if (!adminManager.isMasterAdmin(userId)) {
       return ctx.reply(ERROR_MESSAGES.MASTER_ACCESS_DENIED);

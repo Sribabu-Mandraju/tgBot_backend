@@ -115,29 +115,47 @@ bot.command("cancel", (ctx) => handleCancelCommand(ctx, dataStorage));
 // Admin commands (with access control)
 bot.command(
   "addproduct",
-  requireAdminAccess((ctx) => handleAddProductCommand(ctx, dataStorage))
+  requireAdminAccess(
+    (ctx) => handleAddProductCommand(ctx, dataStorage),
+    adminManager
+  )
 );
 bot.command(
   "deleteproduct",
-  requireAdminAccess((ctx) => handleDeleteProductCommand(ctx, productManager))
+  requireAdminAccess(
+    (ctx) => handleDeleteProductCommand(ctx, productManager),
+    adminManager
+  )
 );
 bot.command(
   "listproducts",
-  requireAdminAccess((ctx) => handleListProductsCommand(ctx, productManager))
+  requireAdminAccess(
+    (ctx) => handleListProductsCommand(ctx, productManager),
+    adminManager
+  )
 );
 
 // Master admin commands (with access control)
 bot.command(
   "addadmin",
-  requireMasterAdminAccess((ctx) => handleAddAdminCommand(ctx, adminManager))
+  requireMasterAdminAccess(
+    (ctx) => handleAddAdminCommand(ctx, adminManager),
+    adminManager
+  )
 );
 bot.command(
   "removeadmin",
-  requireMasterAdminAccess((ctx) => handleRemoveAdminCommand(ctx, adminManager))
+  requireMasterAdminAccess(
+    (ctx) => handleRemoveAdminCommand(ctx, adminManager),
+    adminManager
+  )
 );
 bot.command(
   "listadmins",
-  requireMasterAdminAccess((ctx) => handleListAdminsCommand(ctx, adminManager))
+  requireMasterAdminAccess(
+    (ctx) => handleListAdminsCommand(ctx, adminManager),
+    adminManager
+  )
 );
 
 // ============================================================================
