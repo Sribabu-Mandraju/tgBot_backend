@@ -22,9 +22,11 @@ const bot = new Telegraf(
 
 // Ragapay configuration
 const RAGAPAY_CONFIG = {
-  key: process.env.RAGAPAY_TEST_KEY,
-  password: process.env.RAGAPAY_PASSWORD,
-  endpoint: process.env.RAGAPAY_ENDPOINT,
+  key: process.env.RAGAPAY_TEST_KEY || "63027294-a04c-11f0-a710-0ee5bf94a9b3",
+  password: process.env.RAGAPAY_PASSWORD || "62f0c985b6dd21945ded2f0aba81f21f",
+  endpoint:
+    process.env.RAGAPAY_ENDPOINT ||
+    "https://checkout.ragapay.com/api/v1/session",
 };
 
 // In-memory storage for demo (replace with database in production)
@@ -85,10 +87,23 @@ function checkRateLimit(ip) {
 
 // Helper: Generate HMAC-SHA256 hash for Ragapay
 function generateHash(payload) {
-  const stringified = JSON.stringify(payload);
-  return CryptoJS.HmacSHA256(stringified, RAGAPAY_CONFIG.password).toString(
-    CryptoJS.enc.Hex
-  );
+  try {
+    if (!RAGAPAY_CONFIG.password) {
+      throw new Error("Ragapay password is not configured");
+    }
+
+    const stringified = JSON.stringify(payload);
+    const hash = CryptoJS.HmacSHA256(stringified, RAGAPAY_CONFIG.password);
+
+    if (!hash || !hash.sigBytes) {
+      throw new Error("Failed to generate hash");
+    }
+
+    return hash.toString(CryptoJS.enc.Hex);
+  } catch (error) {
+    console.error("Hash generation error:", error);
+    throw new Error(`Hash generation failed: ${error.message}`);
+  }
 }
 
 // Helper: Validate amount
@@ -173,6 +188,12 @@ bot.command("pay", async (ctx) => {
     // Create payment session
     const orderNumber = `TG_${userId}_${Date.now()}`;
 
+    console.log(`Ragapay config check:`, {
+      key: RAGAPAY_CONFIG.key ? "present" : "missing",
+      password: RAGAPAY_CONFIG.password ? "present" : "missing",
+      endpoint: RAGAPAY_CONFIG.endpoint,
+    });
+
     const payload = {
       merchant_key: RAGAPAY_CONFIG.key,
       operation: "purchase",
@@ -250,8 +271,6 @@ bot.command("pay", async (ctx) => {
     );
   }
 });
-
-
 
 // Status command
 bot.command("status", (ctx) => {
