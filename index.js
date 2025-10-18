@@ -1,3 +1,4 @@
+
 // Telegram Payment Bot with Ragapay Integration
 import express from "express";
 import { Telegraf } from "telegraf";
@@ -16,28 +17,16 @@ const BASE_URL =
 
 // Initialize Telegram bot
 const bot = new Telegraf(
-  process.env.BOT_TOKEN ||
+  process.env.TELEGRAM_BOT_TOKEN ||
     "8414140800:AAGD3rLf9xNqxr_Ps08HIsoByMDV4wwNxBE"
 );
 
-
-console.log("Environment variables:", {
-  BOT_TOKEN: process.env.BOT_TOKEN,
-  MERCHANT_KEY: process.env.MERCHANT_KEY,
-  MERCHANT_SECRET: process.env.MERCHANT_SECRET,
-  CHECKOUT_HOST: process.env.CHECKOUT_HOST,
-  BASE_URL: process.env.BASE_URL,
-  PORT: process.env.PORT,
-});
-
-
-
 // Ragapay configuration
 const RAGAPAY_CONFIG = {
-  key: process.env.MERCHANT_KEY || "63027294-a04c-11f0-a710-0ee5bf94a9b3",
-  password: process.env.MERCHANT_SECRET || "62f0c985b6dd21945ded2f0aba81f21f",
+  key: process.env.RAGAPAY_TEST_KEY || "63027294-a04c-11f0-a710-0ee5bf94a9b3",
+  password: process.env.RAGAPAY_PASSWORD || "62f0c985b6dd21945ded2f0aba81f21f",
   endpoint:
-    process.env.CHECKOUT_HOST ||
+    process.env.RAGAPAY_ENDPOINT ||
     "https://checkout.ragapay.com/api/v1/session",
 };
 
