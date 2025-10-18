@@ -171,7 +171,7 @@ bot.on("text", (ctx) => {
   // Check if user is in address collection mode
   if (dataStorage.userAddressCollection.has(userId)) {
     const addressData = dataStorage.userAddressCollection.get(userId);
-    handleAddressCollection(ctx, userId, text, addressData);
+    handleAddressCollection(ctx, userId, text, addressData, dataStorage);
     return;
   }
 

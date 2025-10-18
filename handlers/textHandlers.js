@@ -16,7 +16,13 @@ import { ADDRESS_STEPS, PRODUCT_STEPS, SUCCESS_MESSAGES } from "../config.js";
 // ADDRESS COLLECTION HANDLER
 // ============================================================================
 
-export function handleAddressCollection(ctx, userId, text, addressData) {
+export function handleAddressCollection(
+  ctx,
+  userId,
+  text,
+  addressData,
+  dataStorage
+) {
   const { step, address } = addressData;
 
   switch (step) {
@@ -105,7 +111,7 @@ export function handleAddressCollection(ctx, userId, text, addressData) {
 
       // Address collection complete, create payment session
       console.log(`Address collection completed for user ${userId}:`, address);
-      createPaymentSession(ctx, userId, addressData, ctx.dataStorage);
+      createPaymentSession(ctx, userId, addressData, dataStorage);
       break;
 
     default:
