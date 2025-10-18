@@ -251,3 +251,23 @@ export function formatPaymentStatusMessage(session) {
 
   return message;
 }
+
+export function updatePaymentStatus(
+  dataStorage,
+  orderNumber,
+  newStatus,
+  transactionId = null
+) {
+  // Find the user session by order number
+  for (const [userId, session] of dataStorage.userSessions.entries()) {
+    if (session.orderNumber === orderNumber) {
+      session.status = newStatus.toLowerCase();
+      if (transactionId) {
+        session.transactionId = transactionId;
+      }
+      session.updatedAt = new Date();
+      return { userId, session };
+    }
+  }
+  return null;
+}

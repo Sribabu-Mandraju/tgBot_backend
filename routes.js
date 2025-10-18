@@ -5,6 +5,39 @@
 import express from "express";
 import { SERVER_CONFIG } from "./config.js";
 
+// Helper function to format payment status messages
+function getPaymentStatusMessage(session, status) {
+  const statusEmojis = {
+    completed: "✅",
+    failed: "❌",
+    cancelled: "🚫",
+    pending: "⏳",
+  };
+
+  const statusEmoji = statusEmojis[status.toLowerCase()] || "❓";
+
+  let message =
+    `💳 **Payment Status Update**\n\n` +
+    `Order: ${session.orderNumber}\n` +
+    `Amount: ${session.amount} ${session.currency}\n` +
+    `Status: ${statusEmoji} ${status.toUpperCase()}\n` +
+    `Updated: ${new Date().toLocaleString()}\n\n`;
+
+  if (session.productName) {
+    message += `Product: ${session.productName}\n\n`;
+  }
+
+  if (status.toLowerCase() === "completed") {
+    message += "🎉 **Payment Successful!**\nThank you for your purchase.";
+  } else if (status.toLowerCase() === "failed") {
+    message += "❌ **Payment Failed**\nPlease try again or contact support.";
+  } else if (status.toLowerCase() === "cancelled") {
+    message += "🚫 **Payment Cancelled**\nYou can start a new payment anytime.";
+  }
+
+  return message;
+}
+
 // ============================================================================
 // ROUTE HANDLERS
 // ============================================================================
@@ -46,7 +79,10 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
       status: "running",
       endpoints: {
         health: "/health",
-        webhook: "/webhook/telegram",
+        telegram_webhook: "/webhook/telegram",
+        ragapay_webhook: "/webhook/ragapay",
+        payment_success: "/payment/success",
+        payment_cancel: "/payment/cancel",
       },
     });
   });
@@ -58,6 +94,56 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
       res.status(200).json({ status: "OK" });
     } catch (error) {
       console.error("Webhook error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Ragapay webhook endpoint for payment status updates
+  router.post("/webhook/ragapay", (req, res) => {
+    try {
+      console.log(
+        "Ragapay webhook received:",
+        JSON.stringify(req.body, null, 2)
+      );
+
+      const { order, status, transaction_id } = req.body;
+
+      if (!order || !status) {
+        console.error("Invalid webhook data:", req.body);
+        return res.status(400).json({ error: "Invalid webhook data" });
+      }
+
+      // Find the user session by order number
+      let userId = null;
+      for (const [uid, session] of dataStorage.userSessions.entries()) {
+        if (session.orderNumber === order.number) {
+          userId = uid;
+          break;
+        }
+      }
+
+      if (!userId) {
+        console.error("User session not found for order:", order.number);
+        return res.status(404).json({ error: "User session not found" });
+      }
+
+      // Update payment status
+      const session = dataStorage.userSessions.get(userId);
+      if (session) {
+        session.status = status.toLowerCase();
+        session.transactionId = transaction_id;
+        session.updatedAt = new Date();
+
+        console.log(`Payment status updated for user ${userId}: ${status}`);
+
+        // Send notification to user
+        const statusMessage = getPaymentStatusMessage(session, status);
+        bot.telegram.sendMessage(userId, statusMessage);
+      }
+
+      res.status(200).json({ status: "OK" });
+    } catch (error) {
+      console.error("Ragapay webhook error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -113,6 +199,7 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
         "/",
         "/health",
         "/webhook/telegram",
+        "/webhook/ragapay",
         "/payment/success",
         "/payment/cancel",
       ],
