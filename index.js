@@ -219,8 +219,7 @@ async function createPaymentSession(ctx, userId, addressData) {
     userAddressCollection.delete(userId);
 
     ctx.reply(
-      `✅ **Address Complete!**\n\n` +
-        `💳 **Payment Session Created!**\n\n` +
+      `💳 **Payment Session Created!**\n\n` +
         `Amount: ${amount} ${currency}\n` +
         `Order: ${orderNumber}\n\n` +
         `📍 **Billing Address:**\n` +
@@ -264,8 +263,7 @@ bot.start((ctx) => {
       `Example: /pay 100 USD\n\n` +
       `💡 **Payment Process:**\n` +
       `1. Use /pay command\n` +
-      `2. Provide billing address (6 steps)\n` +
-      `3. Complete payment on checkout page`
+      `2. Complete payment on checkout page`
   );
 });
 
@@ -288,12 +286,11 @@ bot.help((ctx) => {
       `• /pay 5000 INR\n\n` +
       `💡 **Payment Process:**\n` +
       `1. Use /pay command\n` +
-      `2. Provide billing address (6 steps)\n` +
-      `3. Complete payment on checkout page`
+      `2. Complete payment on checkout page`
   );
 });
 
-// Pay command - Step 1: Amount and Currency
+// Pay command - Create payment with hardcoded address
 bot.command("pay", async (ctx) => {
   const userId = ctx.from.id;
   const args = ctx.message.text.split(" ").slice(1);
@@ -324,42 +321,37 @@ bot.command("pay", async (ctx) => {
   const amount = parseFloat(amountStr);
   const currencyUpper = currency.toUpperCase();
 
-  // Store payment info and start address collection
-  userAddressCollection.set(userId, {
+  // Hardcoded valid address
+  const hardcodedAddress = {
+    country: "US",
+    state: "CA",
+    city: "San Francisco",
+    address: "123 Main Street",
+    zip: "94105",
+    phone: "+1234567890",
+  };
+
+  // Create address data object
+  const addressData = {
     amount,
     currency: currencyUpper,
-    step: "country",
-    address: {},
-  });
+    address: hardcodedAddress,
+  };
 
   console.log(
-    `Starting address collection for user ${userId}, amount: ${amount} ${currencyUpper}`
+    `Creating payment for user ${userId}, amount: ${amount} ${currencyUpper} with hardcoded address`
   );
 
-  ctx.reply(
-    `💳 Payment: ${amount} ${currencyUpper}\n\n` +
-      `📍 Please provide your billing address:\n\n` +
-      `**Step 1/6: Country**\n` +
-      `Please enter your country (e.g., US, UK, CA):`
-  );
+  // Create payment session directly
+  await createPaymentSession(ctx, userId, addressData);
 });
 
-// Cancel command - Exit address collection
+// Cancel command - No longer needed but kept for compatibility
 bot.command("cancel", (ctx) => {
-  const userId = ctx.from.id;
-
-  if (userAddressCollection.has(userId)) {
-    userAddressCollection.delete(userId);
-    ctx.reply(
-      "❌ Address collection cancelled.\n\n" +
-        "Use /pay <amount> <currency> to start a new payment."
-    );
-  } else {
-    ctx.reply(
-      "ℹ️ No active address collection to cancel.\n\n" +
-        "Use /pay <amount> <currency> to start a payment."
-    );
-  }
+  ctx.reply(
+    "ℹ️ No active processes to cancel.\n\n" +
+      "Use /pay <amount> <currency> to start a payment."
+  );
 });
 
 // Status command
@@ -397,144 +389,20 @@ bot.command("status", (ctx) => {
   );
 });
 
-// Handle address collection flow
+// Handle text messages (simplified - no address collection)
 bot.on("text", async (ctx) => {
   const userId = ctx.from.id;
   const text = ctx.message.text.trim();
 
-  // Check if user is in address collection flow
-  const addressData = userAddressCollection.get(userId);
-
-  if (!addressData) {
-    // Not in address collection, check if it's a command
-    if (text.startsWith("/")) {
-      return; // Let command handlers deal with it
-    }
-
-    console.log(`User ${userId} sent text: ${text}`);
-    ctx.reply(
-      "🤖 I only respond to commands. Use /help to see available commands."
-    );
-    return;
+  // Check if it's a command
+  if (text.startsWith("/")) {
+    return; // Let command handlers deal with it
   }
 
-  console.log(`User ${userId} in step ${addressData.step}, entered: ${text}`);
-
-  try {
-    switch (addressData.step) {
-      case "country":
-        const countryError = validateAddressField(text, "Country");
-        if (countryError) {
-          return ctx.reply(
-            `❌ ${countryError}\n\nPlease enter your country (e.g., US, UK, CA):`
-          );
-        }
-
-        addressData.address.country = text.toUpperCase();
-        addressData.step = "state";
-
-        ctx.reply(
-          `✅ Country: ${addressData.address.country}\n\n` +
-            `**Step 2/6: State/Province**\n` +
-            `Please enter your state or province (e.g., CA, NY, ON):`
-        );
-        break;
-
-      case "state":
-        const stateError = validateAddressField(text, "State");
-        if (stateError) {
-          return ctx.reply(
-            `❌ ${stateError}\n\nPlease enter your state or province (e.g., CA, NY, ON):`
-          );
-        }
-
-        addressData.address.state = text.toUpperCase();
-        addressData.step = "city";
-
-        ctx.reply(
-          `✅ State: ${addressData.address.state}\n\n` +
-            `**Step 3/6: City**\n` +
-            `Please enter your city (e.g., New York, Los Angeles):`
-        );
-        break;
-
-      case "city":
-        const cityError = validateAddressField(text, "City");
-        if (cityError) {
-          return ctx.reply(
-            `❌ ${cityError}\n\nPlease enter your city (e.g., New York, Los Angeles):`
-          );
-        }
-
-        addressData.address.city = text;
-        addressData.step = "address";
-
-        ctx.reply(
-          `✅ City: ${addressData.address.city}\n\n` +
-            `**Step 4/6: Street Address**\n` +
-            `Please enter your street address (e.g., 123 Main St):`
-        );
-        break;
-
-      case "address":
-        const addressError = validateAddressField(text, "Address");
-        if (addressError) {
-          return ctx.reply(
-            `❌ ${addressError}\n\nPlease enter your street address (e.g., 123 Main St):`
-          );
-        }
-
-        addressData.address.address = text;
-        addressData.step = "zip";
-
-        ctx.reply(
-          `✅ Address: ${addressData.address.address}\n\n` +
-            `**Step 5/6: ZIP/Postal Code**\n` +
-            `Please enter your ZIP or postal code (e.g., 10001):`
-        );
-        break;
-
-      case "zip":
-        const zipError = validateZip(text);
-        if (zipError) {
-          return ctx.reply(
-            `❌ ${zipError}\n\nPlease enter your ZIP or postal code (e.g., 10001):`
-          );
-        }
-
-        addressData.address.zip = text;
-        addressData.step = "phone";
-
-        ctx.reply(
-          `✅ ZIP: ${addressData.address.zip}\n\n` +
-            `**Step 6/6: Phone Number**\n` +
-            `Please enter your phone number (e.g., +1234567890):`
-        );
-        break;
-
-      case "phone":
-        const phoneError = validatePhone(text);
-        if (phoneError) {
-          return ctx.reply(
-            `❌ ${phoneError}\n\nPlease enter your phone number (e.g., +1234567890):`
-          );
-        }
-
-        addressData.address.phone = text;
-
-        // All address data collected, create payment
-        await createPaymentSession(ctx, userId, addressData);
-        break;
-
-      default:
-        ctx.reply("❌ Invalid step. Please start over with /pay command.");
-        userAddressCollection.delete(userId);
-    }
-  } catch (error) {
-    console.error(`Address collection error for user ${userId}:`, error);
-    ctx.reply("❌ An error occurred. Please start over with /pay command.");
-    userAddressCollection.delete(userId);
-  }
+  console.log(`User ${userId} sent text: ${text}`);
+  ctx.reply(
+    "🤖 I only respond to commands. Use /help to see available commands."
+  );
 });
 
 // Error handling
