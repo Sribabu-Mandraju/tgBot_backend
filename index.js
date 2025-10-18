@@ -251,6 +251,8 @@ bot.command("pay", async (ctx) => {
   }
 });
 
+
+
 // Status command
 bot.command("status", (ctx) => {
   const userId = ctx.from.id;
