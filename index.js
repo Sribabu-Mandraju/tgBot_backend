@@ -55,8 +55,6 @@ import { createRoutes } from "./routes.js";
 
 console.log("🚀 Starting Telegram Payment Bot...");
 
-
-
 // Create Express app
 const app = express();
 
@@ -219,20 +217,17 @@ const server = app.listen(SERVER_CONFIG.PORT, () => {
 
 // Start bot based on environment
 if (SERVER_CONFIG.NODE_ENV === "production") {
-  // Production: Use webhook
+  // Production: Use webhook with Express server
   console.log("🔗 Setting up webhook for production...");
-  bot
-    .launch({
-      webhook: {
-        domain: SERVER_CONFIG.BASE_URL,
-        port: SERVER_CONFIG.PORT,
-      },
-    })
+
+  // Set webhook URL
+  bot.telegram
+    .setWebhook(`${SERVER_CONFIG.BASE_URL}/webhook/telegram`)
     .then(() => {
-      console.log("✅ Bot webhook started successfully");
+      console.log("✅ Bot webhook set successfully");
     })
     .catch((error) => {
-      console.error("❌ Failed to start bot webhook:", error);
+      console.error("❌ Failed to set webhook:", error);
       process.exit(1);
     });
 } else {
