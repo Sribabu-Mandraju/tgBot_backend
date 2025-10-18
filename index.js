@@ -55,6 +55,8 @@ import { createRoutes } from "./routes.js";
 
 console.log("🚀 Starting Telegram Payment Bot...");
 
+
+
 // Create Express app
 const app = express();
 
