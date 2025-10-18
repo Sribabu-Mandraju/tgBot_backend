@@ -220,19 +220,42 @@ async function createPaymentSession(ctx, userId, addressData) {
       timeout: 10000,
     });
 
+    console.log(
+      "Ragapay API Response:",
+      JSON.stringify(response.data, null, 2)
+    );
+
+    // Check if response has the expected structure
+    if (!response.data) {
+      throw new Error("No response data received from Ragapay");
+    }
+
+    // Try different possible field names for checkout URL
+    const checkoutUrl =
+      response.data.checkout_url ||
+      response.data.url ||
+      response.data.redirect_url ||
+      response.data.payment_url;
+
+    if (!checkoutUrl) {
+      console.error(
+        "No checkout URL found in response. Available fields:",
+        Object.keys(response.data)
+      );
+      throw new Error("No checkout URL received from Ragapay");
+    }
+
     // Store session info
     userSessions.set(userId, {
       orderNumber,
       amount,
       currency: currency,
       status: "pending",
-      checkoutUrl: response.data.checkout_url,
+      checkoutUrl: checkoutUrl,
       createdAt: new Date(),
     });
 
-    console.log(
-      `Payment session created for user ${userId}: ${response.data.checkout_url}`
-    );
+    console.log(`Payment session created for user ${userId}: ${checkoutUrl}`);
 
     // Clear address collection data
     userAddressCollection.delete(userId);
@@ -246,7 +269,7 @@ async function createPaymentSession(ctx, userId, addressData) {
         `${address.state} ${address.zip}, ${address.country}\n` +
         `📞 ${address.phone}\n\n` +
         `🔗 **Click the link below to complete your payment:**\n` +
-        `${response.data.checkout_url}\n\n` +
+        `${checkoutUrl}\n\n` +
         `Use /status to check your payment status.`
     );
   } catch (error) {
@@ -254,6 +277,13 @@ async function createPaymentSession(ctx, userId, addressData) {
       `Payment creation failed for user ${userId}:`,
       error.response?.data || error.message
     );
+
+    // Log full error details for debugging
+    if (error.response) {
+      console.error("Response status:", error.response.status);
+      console.error("Response headers:", error.response.headers);
+      console.error("Response data:", error.response.data);
+    }
 
     // Clear address collection data on error
     userAddressCollection.delete(userId);
