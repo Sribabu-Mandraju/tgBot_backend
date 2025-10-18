@@ -1,141 +1,405 @@
-// server.js
+// Telegram Payment Bot with Ragapay Integration
 import express from "express";
+import { Telegraf } from "telegraf";
 import axios from "axios";
 import CryptoJS from "crypto-js";
 import bodyParser from "body-parser";
 import dotenv from "dotenv";
 
+// Load environment variables
 dotenv.config();
-
-// Validate required environment variables
-const requiredEnvVars = ["CHECKOUT_HOST", "MERCHANT_KEY", "MERCHANT_SECRET"];
-const missingVars = requiredEnvVars.filter((varName) => !process.env[varName]);
-
-if (missingVars.length > 0) {
-  console.error("❌ Error: Missing required environment variables:");
-  missingVars.forEach((varName) => {
-    console.log(`   - ${varName}`);
-  });
-  console.log("\nPlease add these to your .env file:");
-  console.log("CHECKOUT_HOST=your_checkout_host_url");
-  console.log("MERCHANT_KEY=your_merchant_key");
-  console.log("MERCHANT_SECRET=your_merchant_secret");
-  process.exit(1);
-}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const CHECKOUT_HOST = process.env.CHECKOUT_HOST;
-const MERCHANT_KEY = process.env.MERCHANT_KEY;
-const MERCHANT_SECRET = process.env.MERCHANT_SECRET;
+const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
 
+// Initialize Telegram bot
+const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || "8414140800:AAGD3rLf9xNqxr_Ps08HIsoByMDV4wwNxBE");
+
+// Ragapay configuration
+const RAGAPAY_CONFIG = {
+  key: process.env.RAGAPAY_TEST_KEY,
+  password: process.env.RAGAPAY_PASSWORD,
+  endpoint: process.env.RAGAPAY_ENDPOINT,
+};
+
+// In-memory storage for demo (replace with database in production)
+const userSessions = new Map();
+
+// Middleware
 app.use(bodyParser.json());
-app.use(express.static("public")); // Optional: for serving a frontend
+app.use(express.static("public"));
 
-// Helper: Generate HMAC-SHA256 hash
+// Security headers
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  next();
+});
+
+// Rate limiting (simple implementation)
+const rateLimit = new Map();
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 10;
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const userRequests = rateLimit.get(ip) || [];
+
+  // Remove old requests outside the window
+  const validRequests = userRequests.filter(
+    (time) => now - time < RATE_LIMIT_WINDOW
+  );
+
+  if (validRequests.length >= RATE_LIMIT_MAX_REQUESTS) {
+    return false;
+  }
+
+  validRequests.push(now);
+  rateLimit.set(ip, validRequests);
+  return true;
+}
+
+// Helper: Generate HMAC-SHA256 hash for Ragapay
 function generateHash(payload) {
   const stringified = JSON.stringify(payload);
-  return CryptoJS.HmacSHA256(stringified, MERCHANT_SECRET).toString(
+  return CryptoJS.HmacSHA256(stringified, RAGAPAY_CONFIG.password).toString(
     CryptoJS.enc.Hex
   );
 }
 
-// Endpoint to create payment session
-app.post("/api/create-session", async (req, res) => {
-  const {
-    orderNumber,
-    amount,
-    currency = "USD",
-    description,
-    customerName,
-    customerEmail,
-    billingCountry = "US",
-    methods = ["card"], // Default to card
-    ...customParams
-  } = req.body;
+// Helper: Validate amount
+function validateAmount(amount) {
+  const numAmount = parseFloat(amount);
+  return !isNaN(numAmount) && numAmount >= 1 && numAmount <= 1000000;
+}
 
-  // Validate inputs
-  if (!orderNumber || !amount || amount <= 0) {
-    return res
-      .status(400)
-      .json({ success: false, error: "Invalid orderNumber or amount" });
+// Helper: Validate currency
+function validateCurrency(currency) {
+  const supportedCurrencies = ["USD", "EUR", "GBP", "INR"];
+  return supportedCurrencies.includes(currency.toUpperCase());
+}
+
+// Telegram Bot Commands
+
+// Start command
+bot.start((ctx) => {
+  console.log(`User ${ctx.from.id} started the bot`);
+  ctx.reply(
+    `🤖 Welcome to the Payment Bot!\n\n` +
+      `I can help you process payments securely using Ragapay.\n\n` +
+      `Available commands:\n` +
+      `• /help - Show this help message\n` +
+      `• /pay <amount> <currency> - Create a payment session\n` +
+      `• /status - Check your payment status\n\n` +
+      `Example: /pay 100 USD`
+  );
+});
+
+// Help command
+bot.help((ctx) => {
+  console.log(`User ${ctx.from.id} requested help`);
+  ctx.reply(
+    `📖 Payment Bot Help\n\n` +
+      `Commands:\n` +
+      `• /start - Welcome message\n` +
+      `• /help - Show this help\n` +
+      `• /pay <amount> <currency> - Create payment\n` +
+      `• /status - Check payment status\n\n` +
+      `Supported currencies: USD, EUR, GBP, INR\n` +
+      `Amount range: 1 to 1,000,000\n\n` +
+      `Examples:\n` +
+      `• /pay 50 USD\n` +
+      `• /pay 100 EUR\n` +
+      `• /pay 5000 INR`
+  );
+});
+
+// Pay command
+bot.command("pay", async (ctx) => {
+  const userId = ctx.from.id;
+  const args = ctx.message.text.split(" ").slice(1);
+
+  console.log(`User ${userId} initiated payment with args:`, args);
+
+  if (args.length !== 2) {
+    return ctx.reply(
+      "❌ Invalid format. Use: /pay <amount> <currency>\n" +
+        "Example: /pay 100 USD"
+    );
   }
 
-  // Construct payload
-  const payload = {
-    merchant_key: MERCHANT_KEY,
-    operation: "purchase",
-    methods: Array.isArray(methods) ? methods : [methods],
-    order: {
-      number: orderNumber,
-      amount: amount.toFixed(2), // String with 2 decimals
-      currency,
-      description: description || `Payment for order ${orderNumber}`,
-    },
-    cancel_url: "https://your-domain.com/cancel", // Replace with your domain
-    success_url: "https://your-domain.com/success", // Replace with your domain
-    customer: {
-      name: customerName || "Test User",
-      email: customerEmail || "test@example.com",
-    },
-    billing_address: {
-      country: billingCountry,
-      state: "",
-      city: "",
-      address: "",
-      zip: "",
-      phone: "",
-    },
-    parameters: customParams.parameters || {},
-    hash: "",
-  };
+  const [amountStr, currency] = args;
 
-  // Generate hash (exclude hash field)
-  payload.hash = generateHash({ ...payload, hash: "" });
+  // Validate amount
+  if (!validateAmount(amountStr)) {
+    return ctx.reply(
+      "❌ Invalid amount. Please enter a number between 1 and 1,000,000."
+    );
+  }
+
+  // Validate currency
+  if (!validateCurrency(currency)) {
+    return ctx.reply("❌ Unsupported currency. Supported: USD, EUR, GBP, INR");
+  }
+
+  const amount = parseFloat(amountStr);
+  const currencyUpper = currency.toUpperCase();
 
   try {
-    const response = await axios.post(
-      `${CHECKOUT_HOST}/api/v1/session`,
-      payload,
-      {
-        headers: { "Content-Type": "application/json" },
-      }
+    // Create payment session
+    const orderNumber = `TG_${userId}_${Date.now()}`;
+
+    const payload = {
+      merchant_key: RAGAPAY_CONFIG.key,
+      operation: "purchase",
+      methods: ["card"],
+      order: {
+        number: orderNumber,
+        amount: amount.toFixed(2),
+        currency: currencyUpper,
+        description: `Telegram Payment - ${amount} ${currencyUpper}`,
+      },
+      cancel_url: `${BASE_URL}/payment/cancel`,
+      success_url: `${BASE_URL}/payment/success`,
+      customer: {
+        name: ctx.from.first_name || "Telegram User",
+        email: "user@telegram.com",
+      },
+      billing_address: {
+        country: "US",
+        state: "",
+        city: "",
+        address: "",
+        zip: "",
+        phone: "",
+      },
+      parameters: {
+        telegram_user_id: userId,
+        telegram_chat_id: ctx.chat.id,
+      },
+      hash: "",
+    };
+
+    // Generate hash
+    payload.hash = generateHash({ ...payload, hash: "" });
+
+    console.log(
+      `Creating payment session for user ${userId}, order: ${orderNumber}`
     );
 
-    res.json({ success: true, checkoutUrl: response.data.checkout_url });
-  } catch (error) {
-    console.error("RagaPay Error:", error.response?.data || error.message);
-    console.error("Full error details:", {
-      message: error.message,
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      data: error.response?.data,
-      config: {
-        url: error.config?.url,
-        method: error.config?.method,
-        headers: error.config?.headers,
-      },
+    const response = await axios.post(RAGAPAY_CONFIG.endpoint, payload, {
+      headers: { "Content-Type": "application/json" },
+      timeout: 10000,
     });
 
-    res.status(500).json({
-      success: false,
-      error: error.response?.data?.message || "Session creation failed",
-      details:
-        process.env.NODE_ENV === "development" ? error.message : undefined,
+    // Store session info
+    userSessions.set(userId, {
+      orderNumber,
+      amount,
+      currency: currencyUpper,
+      status: "pending",
+      checkoutUrl: response.data.checkout_url,
+      createdAt: new Date(),
     });
+
+    console.log(
+      `Payment session created for user ${userId}: ${response.data.checkout_url}`
+    );
+
+    ctx.reply(
+      `💳 Payment Session Created!\n\n` +
+        `Amount: ${amount} ${currencyUpper}\n` +
+        `Order: ${orderNumber}\n\n` +
+        `Click the link below to complete your payment:\n` +
+        `${response.data.checkout_url}\n\n` +
+        `Use /status to check your payment status.`
+    );
+  } catch (error) {
+    console.error(
+      `Payment creation failed for user ${userId}:`,
+      error.response?.data || error.message
+    );
+
+    ctx.reply(
+      "❌ Failed to create payment session. Please try again later.\n" +
+        "If the problem persists, contact support."
+    );
   }
 });
 
-// Webhook endpoint for payment status updates
-app.post("/api/webhook", (req, res) => {
-  const { status, order_number, transaction_id } = req.body;
-  console.log(
-    `Webhook: Order ${order_number}, Status: ${status}, Transaction ID: ${transaction_id}`
+// Status command
+bot.command("status", (ctx) => {
+  const userId = ctx.from.id;
+  const session = userSessions.get(userId);
+
+  console.log(`User ${userId} checked status`);
+
+  if (!session) {
+    return ctx.reply(
+      "📋 No active payment sessions found.\n" +
+        "Use /pay to create a new payment."
+    );
+  }
+
+  const statusEmoji = {
+    pending: "⏳",
+    completed: "✅",
+    failed: "❌",
+    cancelled: "🚫",
+  };
+
+  ctx.reply(
+    `📋 Payment Status\n\n` +
+      `Order: ${session.orderNumber}\n` +
+      `Amount: ${session.amount} ${session.currency}\n` +
+      `Status: ${statusEmoji[session.status] || "❓"} ${session.status}\n` +
+      `Created: ${session.createdAt.toLocaleString()}\n\n` +
+      `${
+        session.status === "pending"
+          ? "Payment is still pending. Complete it using the link sent earlier."
+          : ""
+      }`
   );
-  // TODO: Update order status in DB, notify user via bot
-  res.status(200).send("OK");
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+// Handle any other text messages
+bot.on("text", (ctx) => {
+  console.log(`User ${ctx.from.id} sent text: ${ctx.message.text}`);
+  ctx.reply(
+    "🤖 I only respond to commands. Use /help to see available commands."
+  );
 });
+
+// Error handling
+bot.catch((err, ctx) => {
+  console.error("Bot error:", err);
+  ctx.reply("❌ An error occurred. Please try again.");
+});
+
+// Express Routes
+
+// Health check
+app.get("/health", (req, res) => {
+  res.json({ status: "OK", timestamp: new Date().toISOString() });
+});
+
+// Payment success page
+app.get("/payment/success", (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Payment Success</title>
+      <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+        .success { color: #28a745; font-size: 24px; }
+        .message { margin: 20px 0; }
+      </style>
+    </head>
+    <body>
+      <div class="success">✅ Payment Successful!</div>
+      <div class="message">Your payment has been processed successfully.</div>
+      <div class="message">You can close this window and return to Telegram.</div>
+    </body>
+    </html>
+  `);
+});
+
+// Payment cancel page
+app.get("/payment/cancel", (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Payment Cancelled</title>
+      <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+        .cancel { color: #dc3545; font-size: 24px; }
+        .message { margin: 20px 0; }
+      </style>
+    </head>
+    <body>
+      <div class="cancel">❌ Payment Cancelled</div>
+      <div class="message">Your payment was cancelled.</div>
+      <div class="message">You can close this window and return to Telegram.</div>
+    </body>
+    </html>
+  `);
+});
+
+// Ragapay webhook endpoint
+app.post("/webhook/ragapay", (req, res) => {
+  const ip = req.ip || req.connection.remoteAddress;
+
+  // Rate limiting
+  if (!checkRateLimit(ip)) {
+    console.log(`Rate limit exceeded for IP: ${ip}`);
+    return res.status(429).json({ error: "Rate limit exceeded" });
+  }
+
+  const { status, order_number, transaction_id } = req.body;
+
+  console.log(
+    `Webhook received: Order ${order_number}, Status: ${status}, Transaction: ${transaction_id}`
+  );
+
+  // Find user by order number
+  for (const [userId, session] of userSessions.entries()) {
+    if (session.orderNumber === order_number) {
+      // Update session status
+      session.status = status.toLowerCase();
+      session.transactionId = transaction_id;
+      session.updatedAt = new Date();
+
+      console.log(`Updated session for user ${userId}: ${status}`);
+
+      // Notify user via Telegram
+      bot.telegram
+        .sendMessage(
+          userId,
+          `📢 Payment Update\n\n` +
+            `Order: ${order_number}\n` +
+            `Status: ${status}\n` +
+            `Transaction ID: ${transaction_id}\n\n` +
+            `${
+              status.toLowerCase() === "completed"
+                ? "✅ Payment successful!"
+                : status.toLowerCase() === "failed"
+                ? "❌ Payment failed!"
+                : "📋 Payment status updated."
+            }`
+        )
+        .catch((err) => {
+          console.error(`Failed to notify user ${userId}:`, err);
+        });
+
+      break;
+    }
+  }
+
+  res.status(200).json({ status: "OK" });
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`📱 Telegram bot started`);
+  console.log(`🔗 Webhook URL: ${BASE_URL}/webhook/ragapay`);
+});
+
+// Start bot
+bot
+  .launch()
+  .then(() => {
+    console.log("🤖 Telegram bot is running!");
+  })
+  .catch((err) => {
+    console.error("❌ Failed to start Telegram bot:", err);
+    process.exit(1);
+  });
+
+// Graceful shutdown
+process.once("SIGINT", () => bot.stop("SIGINT"));
+process.once("SIGTERM", () => bot.stop("SIGTERM"));
