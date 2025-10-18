@@ -27,6 +27,7 @@ import {
   handleBuyCommand,
   handlePayCommand,
   handleStatusCommand,
+  handleRefreshStatusCommand,
   handleCancelCommand,
 } from "./handlers/userCommands.js";
 
@@ -110,6 +111,7 @@ bot.command("products", (ctx) => handleProductsCommand(ctx, productManager));
 bot.command("buy", (ctx) => handleBuyCommand(ctx, productManager, dataStorage));
 bot.command("pay", (ctx) => handlePayCommand(ctx, dataStorage));
 bot.command("status", (ctx) => handleStatusCommand(ctx, dataStorage));
+bot.command("refresh", (ctx) => handleRefreshStatusCommand(ctx, dataStorage));
 bot.command("cancel", (ctx) => handleCancelCommand(ctx, dataStorage));
 
 // Admin commands (with access control)

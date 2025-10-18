@@ -137,6 +137,29 @@ export function handleStatusCommand(ctx, dataStorage) {
   ctx.reply(message);
 }
 
+export function handleRefreshStatusCommand(ctx, dataStorage) {
+  const userId = ctx.from.id;
+  const session = dataStorage.userSessions.get(userId);
+
+  console.log(`User ${userId} requested status refresh`);
+
+  if (!session) {
+    return ctx.reply(
+      "📋 No active payment sessions found.\n" +
+        "Use /pay <amount> <currency> or /buy <product_id> to create a new payment."
+    );
+  }
+
+  // For now, just show current status with a note about webhook
+  const message =
+    formatPaymentStatusMessage(session) +
+    "\n\n🔄 **Note:** Status updates automatically via webhooks.\n" +
+    "If payment was completed but status shows pending, the webhook may not have been received yet.\n" +
+    "You can check your payment directly on the Ragapay checkout page.";
+
+  ctx.reply(message);
+}
+
 export function handleCancelCommand(ctx, dataStorage) {
   const userId = ctx.from.id;
 
@@ -178,6 +201,7 @@ export function handleStartCommand(ctx, adminManager) {
     `• /buy <product_id> - Buy a product\n` +
     `• /pay <amount> <currency> - Direct payment\n` +
     `• /status - Check payment status\n` +
+    `• /refresh - Refresh payment status\n` +
     `• /cancel - Cancel current process\n\n`;
 
   if (adminManager.isAdmin(userId)) {
@@ -219,6 +243,7 @@ export function handleHelpCommand(ctx, adminManager) {
     `• /buy <product_id> - Buy a product\n` +
     `• /pay <amount> <currency> - Direct payment\n` +
     `• /status - Check payment status\n` +
+    `• /refresh - Refresh payment status\n` +
     `• /cancel - Cancel current process\n\n` +
     `Supported currencies: USD, EUR, GBP, INR\n` +
     `Amount range: 1 to 1,000,000\n\n` +
