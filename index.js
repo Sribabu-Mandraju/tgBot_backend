@@ -1,4 +1,3 @@
-
 // Telegram Payment Bot with Ragapay Integration
 import express from "express";
 import { Telegraf } from "telegraf";
@@ -87,24 +86,41 @@ function checkRateLimit(ip) {
   return true;
 }
 
-// Helper: Generate HMAC-SHA256 hash for Ragapay
-function generateHash(payload) {
+// Helper: Generate signature for Ragapay (official format)
+function generateSignature(payload) {
   try {
     if (!RAGAPAY_CONFIG.password) {
       throw new Error("Ragapay password is not configured");
     }
 
-    const stringified = JSON.stringify(payload);
-    const hash = CryptoJS.HmacSHA256(stringified, RAGAPAY_CONFIG.password);
+    // According to official docs: sha1(md5(strtoupper(order.number + order.amount + order.currency + order.description + PASSWORD)))
+    const to_md5 =
+      payload.order.number +
+      payload.order.amount +
+      payload.order.currency +
+      payload.order.description +
+      RAGAPAY_CONFIG.password;
 
-    if (!hash || !hash.sigBytes) {
-      throw new Error("Failed to generate hash");
-    }
+    console.log("Signature input string:", to_md5);
 
-    return hash.toString(CryptoJS.enc.Hex);
+    // Step 1: Convert to uppercase
+    const upperString = to_md5.toUpperCase();
+    console.log("Uppercase string:", upperString);
+
+    // Step 2: Generate MD5 hash
+    const md5Hash = CryptoJS.MD5(upperString);
+    console.log("MD5 hash:", md5Hash.toString(CryptoJS.enc.Hex));
+
+    // Step 3: Generate SHA1 of MD5 result
+    const sha1Hash = CryptoJS.SHA1(md5Hash.toString());
+    const signature = CryptoJS.enc.Hex.stringify(sha1Hash);
+
+    console.log("Final signature:", signature);
+
+    return signature;
   } catch (error) {
-    console.error("Hash generation error:", error);
-    throw new Error(`Hash generation failed: ${error.message}`);
+    console.error("Signature generation error:", error);
+    throw new Error(`Signature generation failed: ${error.message}`);
   }
 }
 
@@ -190,12 +206,14 @@ async function createPaymentSession(ctx, userId, addressData) {
       hash: "",
     };
 
-    // Generate hash
-    payload.hash = generateHash({ ...payload, hash: "" });
+    // Generate hash using correct Ragapay format
+    payload.hash = generateSignature(payload);
 
     console.log(
       `Creating payment session for user ${userId}, order: ${orderNumber}`
     );
+
+    console.log("Full payload being sent:", JSON.stringify(payload, null, 2));
 
     const response = await axios.post(RAGAPAY_CONFIG.endpoint, payload, {
       headers: { "Content-Type": "application/json" },
