@@ -31,6 +31,7 @@ const RAGAPAY_CONFIG = {
 
 // In-memory storage for demo (replace with database in production)
 const userSessions = new Map();
+const userAddressCollection = new Map(); // Store pending address collection
 
 // Middleware
 app.use(bodyParser.json());
@@ -118,6 +119,135 @@ function validateCurrency(currency) {
   return supportedCurrencies.includes(currency.toUpperCase());
 }
 
+// Helper: Validate address field
+function validateAddressField(value, fieldName) {
+  if (!value || value.trim().length < 2) {
+    return `${fieldName} must be at least 2 characters long`;
+  }
+  return null;
+}
+
+// Helper: Validate phone number
+function validatePhone(phone) {
+  const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+  if (!phone || !phoneRegex.test(phone.replace(/[\s\-\(\)]/g, ""))) {
+    return "Please enter a valid phone number (e.g., +1234567890)";
+  }
+  return null;
+}
+
+// Helper: Validate ZIP code
+function validateZip(zip) {
+  if (!zip || zip.trim().length < 2) {
+    return "ZIP code must be at least 2 characters long";
+  }
+  return null;
+}
+
+// Helper: Create payment session with collected address data
+async function createPaymentSession(ctx, userId, addressData) {
+  try {
+    const { amount, currency, address } = addressData;
+
+    // Create payment session
+    const orderNumber = `TG_${userId}_${Date.now()}`;
+
+    console.log(`Ragapay config check:`, {
+      key: RAGAPAY_CONFIG.key ? "present" : "missing",
+      password: RAGAPAY_CONFIG.password ? "present" : "missing",
+      endpoint: RAGAPAY_CONFIG.endpoint,
+    });
+
+    const payload = {
+      merchant_key: RAGAPAY_CONFIG.key,
+      operation: "purchase",
+      methods: ["card"],
+      order: {
+        number: orderNumber,
+        amount: amount.toFixed(2),
+        currency: currency,
+        description: `Telegram Payment - ${amount} ${currency}`,
+      },
+      cancel_url: `${BASE_URL}/payment/cancel`,
+      success_url: `${BASE_URL}/payment/success`,
+      customer: {
+        name: ctx.from.first_name || "Telegram User",
+        email: `user${userId}@telegram.com`,
+      },
+      billing_address: {
+        country: address.country,
+        state: address.state,
+        city: address.city,
+        address: address.address,
+        zip: address.zip,
+        phone: address.phone,
+      },
+      parameters: {
+        telegram_user_id: userId,
+        telegram_chat_id: ctx.chat.id,
+      },
+      hash: "",
+    };
+
+    // Generate hash
+    payload.hash = generateHash({ ...payload, hash: "" });
+
+    console.log(
+      `Creating payment session for user ${userId}, order: ${orderNumber}`
+    );
+
+    const response = await axios.post(RAGAPAY_CONFIG.endpoint, payload, {
+      headers: { "Content-Type": "application/json" },
+      timeout: 10000,
+    });
+
+    // Store session info
+    userSessions.set(userId, {
+      orderNumber,
+      amount,
+      currency: currency,
+      status: "pending",
+      checkoutUrl: response.data.checkout_url,
+      createdAt: new Date(),
+    });
+
+    console.log(
+      `Payment session created for user ${userId}: ${response.data.checkout_url}`
+    );
+
+    // Clear address collection data
+    userAddressCollection.delete(userId);
+
+    ctx.reply(
+      `✅ **Address Complete!**\n\n` +
+        `💳 **Payment Session Created!**\n\n` +
+        `Amount: ${amount} ${currency}\n` +
+        `Order: ${orderNumber}\n\n` +
+        `📍 **Billing Address:**\n` +
+        `${address.address}, ${address.city}\n` +
+        `${address.state} ${address.zip}, ${address.country}\n` +
+        `📞 ${address.phone}\n\n` +
+        `🔗 **Click the link below to complete your payment:**\n` +
+        `${response.data.checkout_url}\n\n` +
+        `Use /status to check your payment status.`
+    );
+  } catch (error) {
+    console.error(
+      `Payment creation failed for user ${userId}:`,
+      error.response?.data || error.message
+    );
+
+    // Clear address collection data on error
+    userAddressCollection.delete(userId);
+
+    ctx.reply(
+      "❌ Failed to create payment session. Please try again later.\n" +
+        "If the problem persists, contact support.\n\n" +
+        "Start over with: /pay <amount> <currency>"
+    );
+  }
+}
+
 // Telegram Bot Commands
 
 // Start command
@@ -129,8 +259,13 @@ bot.start((ctx) => {
       `Available commands:\n` +
       `• /help - Show this help message\n` +
       `• /pay <amount> <currency> - Create a payment session\n` +
-      `• /status - Check your payment status\n\n` +
-      `Example: /pay 100 USD`
+      `• /status - Check your payment status\n` +
+      `• /cancel - Cancel address collection\n\n` +
+      `Example: /pay 100 USD\n\n` +
+      `💡 **Payment Process:**\n` +
+      `1. Use /pay command\n` +
+      `2. Provide billing address (6 steps)\n` +
+      `3. Complete payment on checkout page`
   );
 });
 
@@ -143,17 +278,22 @@ bot.help((ctx) => {
       `• /start - Welcome message\n` +
       `• /help - Show this help\n` +
       `• /pay <amount> <currency> - Create payment\n` +
-      `• /status - Check payment status\n\n` +
+      `• /status - Check payment status\n` +
+      `• /cancel - Cancel address collection\n\n` +
       `Supported currencies: USD, EUR, GBP, INR\n` +
       `Amount range: 1 to 1,000,000\n\n` +
       `Examples:\n` +
       `• /pay 50 USD\n` +
       `• /pay 100 EUR\n` +
-      `• /pay 5000 INR`
+      `• /pay 5000 INR\n\n` +
+      `💡 **Payment Process:**\n` +
+      `1. Use /pay command\n` +
+      `2. Provide billing address (6 steps)\n` +
+      `3. Complete payment on checkout page`
   );
 });
 
-// Pay command
+// Pay command - Step 1: Amount and Currency
 bot.command("pay", async (ctx) => {
   const userId = ctx.from.id;
   const args = ctx.message.text.split(" ").slice(1);
@@ -184,90 +324,40 @@ bot.command("pay", async (ctx) => {
   const amount = parseFloat(amountStr);
   const currencyUpper = currency.toUpperCase();
 
-  try {
-    // Create payment session
-    const orderNumber = `TG_${userId}_${Date.now()}`;
+  // Store payment info and start address collection
+  userAddressCollection.set(userId, {
+    amount,
+    currency: currencyUpper,
+    step: "country",
+    address: {},
+  });
 
-    console.log(`Ragapay config check:`, {
-      key: RAGAPAY_CONFIG.key ? "present" : "missing",
-      password: RAGAPAY_CONFIG.password ? "present" : "missing",
-      endpoint: RAGAPAY_CONFIG.endpoint,
-    });
+  console.log(
+    `Starting address collection for user ${userId}, amount: ${amount} ${currencyUpper}`
+  );
 
-    const payload = {
-      merchant_key: RAGAPAY_CONFIG.key,
-      operation: "purchase",
-      methods: ["card"],
-      order: {
-        number: orderNumber,
-        amount: amount.toFixed(2),
-        currency: currencyUpper,
-        description: `Telegram Payment - ${amount} ${currencyUpper}`,
-      },
-      cancel_url: `${BASE_URL}/payment/cancel`,
-      success_url: `${BASE_URL}/payment/success`,
-      customer: {
-        name: ctx.from.first_name || "Telegram User",
-        email: "user@telegram.com",
-      },
-      billing_address: {
-        country: "US",
-        state: "",
-        city: "",
-        address: "",
-        zip: "",
-        phone: "",
-      },
-      parameters: {
-        telegram_user_id: userId,
-        telegram_chat_id: ctx.chat.id,
-      },
-      hash: "",
-    };
+  ctx.reply(
+    `💳 Payment: ${amount} ${currencyUpper}\n\n` +
+      `📍 Please provide your billing address:\n\n` +
+      `**Step 1/6: Country**\n` +
+      `Please enter your country (e.g., US, UK, CA):`
+  );
+});
 
-    // Generate hash
-    payload.hash = generateHash({ ...payload, hash: "" });
+// Cancel command - Exit address collection
+bot.command("cancel", (ctx) => {
+  const userId = ctx.from.id;
 
-    console.log(
-      `Creating payment session for user ${userId}, order: ${orderNumber}`
-    );
-
-    const response = await axios.post(RAGAPAY_CONFIG.endpoint, payload, {
-      headers: { "Content-Type": "application/json" },
-      timeout: 10000,
-    });
-
-    // Store session info
-    userSessions.set(userId, {
-      orderNumber,
-      amount,
-      currency: currencyUpper,
-      status: "pending",
-      checkoutUrl: response.data.checkout_url,
-      createdAt: new Date(),
-    });
-
-    console.log(
-      `Payment session created for user ${userId}: ${response.data.checkout_url}`
-    );
-
+  if (userAddressCollection.has(userId)) {
+    userAddressCollection.delete(userId);
     ctx.reply(
-      `💳 Payment Session Created!\n\n` +
-        `Amount: ${amount} ${currencyUpper}\n` +
-        `Order: ${orderNumber}\n\n` +
-        `Click the link below to complete your payment:\n` +
-        `${response.data.checkout_url}\n\n` +
-        `Use /status to check your payment status.`
+      "❌ Address collection cancelled.\n\n" +
+        "Use /pay <amount> <currency> to start a new payment."
     );
-  } catch (error) {
-    console.error(
-      `Payment creation failed for user ${userId}:`,
-      error.response?.data || error.message
-    );
-
+  } else {
     ctx.reply(
-      "❌ Failed to create payment session. Please try again later.\n" +
-        "If the problem persists, contact support."
+      "ℹ️ No active address collection to cancel.\n\n" +
+        "Use /pay <amount> <currency> to start a payment."
     );
   }
 });
@@ -307,12 +397,144 @@ bot.command("status", (ctx) => {
   );
 });
 
-// Handle any other text messages
-bot.on("text", (ctx) => {
-  console.log(`User ${ctx.from.id} sent text: ${ctx.message.text}`);
-  ctx.reply(
-    "🤖 I only respond to commands. Use /help to see available commands."
-  );
+// Handle address collection flow
+bot.on("text", async (ctx) => {
+  const userId = ctx.from.id;
+  const text = ctx.message.text.trim();
+
+  // Check if user is in address collection flow
+  const addressData = userAddressCollection.get(userId);
+
+  if (!addressData) {
+    // Not in address collection, check if it's a command
+    if (text.startsWith("/")) {
+      return; // Let command handlers deal with it
+    }
+
+    console.log(`User ${userId} sent text: ${text}`);
+    ctx.reply(
+      "🤖 I only respond to commands. Use /help to see available commands."
+    );
+    return;
+  }
+
+  console.log(`User ${userId} in step ${addressData.step}, entered: ${text}`);
+
+  try {
+    switch (addressData.step) {
+      case "country":
+        const countryError = validateAddressField(text, "Country");
+        if (countryError) {
+          return ctx.reply(
+            `❌ ${countryError}\n\nPlease enter your country (e.g., US, UK, CA):`
+          );
+        }
+
+        addressData.address.country = text.toUpperCase();
+        addressData.step = "state";
+
+        ctx.reply(
+          `✅ Country: ${addressData.address.country}\n\n` +
+            `**Step 2/6: State/Province**\n` +
+            `Please enter your state or province (e.g., CA, NY, ON):`
+        );
+        break;
+
+      case "state":
+        const stateError = validateAddressField(text, "State");
+        if (stateError) {
+          return ctx.reply(
+            `❌ ${stateError}\n\nPlease enter your state or province (e.g., CA, NY, ON):`
+          );
+        }
+
+        addressData.address.state = text.toUpperCase();
+        addressData.step = "city";
+
+        ctx.reply(
+          `✅ State: ${addressData.address.state}\n\n` +
+            `**Step 3/6: City**\n` +
+            `Please enter your city (e.g., New York, Los Angeles):`
+        );
+        break;
+
+      case "city":
+        const cityError = validateAddressField(text, "City");
+        if (cityError) {
+          return ctx.reply(
+            `❌ ${cityError}\n\nPlease enter your city (e.g., New York, Los Angeles):`
+          );
+        }
+
+        addressData.address.city = text;
+        addressData.step = "address";
+
+        ctx.reply(
+          `✅ City: ${addressData.address.city}\n\n` +
+            `**Step 4/6: Street Address**\n` +
+            `Please enter your street address (e.g., 123 Main St):`
+        );
+        break;
+
+      case "address":
+        const addressError = validateAddressField(text, "Address");
+        if (addressError) {
+          return ctx.reply(
+            `❌ ${addressError}\n\nPlease enter your street address (e.g., 123 Main St):`
+          );
+        }
+
+        addressData.address.address = text;
+        addressData.step = "zip";
+
+        ctx.reply(
+          `✅ Address: ${addressData.address.address}\n\n` +
+            `**Step 5/6: ZIP/Postal Code**\n` +
+            `Please enter your ZIP or postal code (e.g., 10001):`
+        );
+        break;
+
+      case "zip":
+        const zipError = validateZip(text);
+        if (zipError) {
+          return ctx.reply(
+            `❌ ${zipError}\n\nPlease enter your ZIP or postal code (e.g., 10001):`
+          );
+        }
+
+        addressData.address.zip = text;
+        addressData.step = "phone";
+
+        ctx.reply(
+          `✅ ZIP: ${addressData.address.zip}\n\n` +
+            `**Step 6/6: Phone Number**\n` +
+            `Please enter your phone number (e.g., +1234567890):`
+        );
+        break;
+
+      case "phone":
+        const phoneError = validatePhone(text);
+        if (phoneError) {
+          return ctx.reply(
+            `❌ ${phoneError}\n\nPlease enter your phone number (e.g., +1234567890):`
+          );
+        }
+
+        addressData.address.phone = text;
+
+        // All address data collected, create payment
+        await createPaymentSession(ctx, userId, addressData);
+        break;
+
+      default:
+        ctx.reply("❌ Invalid step. Please start over with /pay command.");
+        userAddressCollection.delete(userId);
+    }
+  } catch (error) {
+    console.error(`Address collection error for user ${userId}:`, error);
+    ctx.reply("❌ An error occurred. Please start over with /pay command.");
+    userAddressCollection.delete(userId);
+  }
 });
 
 // Error handling
