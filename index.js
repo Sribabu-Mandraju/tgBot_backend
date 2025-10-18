@@ -11,10 +11,14 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
+const BASE_URL =
+  process.env.BASE_URL || "https://tgbot-backend-ycwm.onrender.com";
 
 // Initialize Telegram bot
-const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || "8414140800:AAGD3rLf9xNqxr_Ps08HIsoByMDV4wwNxBE");
+const bot = new Telegraf(
+  process.env.TELEGRAM_BOT_TOKEN ||
+    "8414140800:AAGD3rLf9xNqxr_Ps08HIsoByMDV4wwNxBE"
+);
 
 // Ragapay configuration
 const RAGAPAY_CONFIG = {
@@ -29,6 +33,24 @@ const userSessions = new Map();
 // Middleware
 app.use(bodyParser.json());
 app.use(express.static("public"));
+
+// Trust proxy for production deployment (Render, Heroku, etc.)
+app.set("trust proxy", 1);
+
+// CORS for production
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+  );
+  if (req.method === "OPTIONS") {
+    res.sendStatus(200);
+  } else {
+    next();
+  }
+});
 
 // Security headers
 app.use((req, res, next) => {
@@ -384,9 +406,10 @@ app.post("/webhook/ragapay", (req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📱 Telegram bot started`);
   console.log(`🔗 Webhook URL: ${BASE_URL}/webhook/ragapay`);
+  console.log(`🌐 Production URL: ${BASE_URL}`);
 });
 
 // Start bot
