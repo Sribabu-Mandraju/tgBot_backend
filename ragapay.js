@@ -488,6 +488,7 @@ export async function createPaymentSession(
       },
       cancel_url: `${SERVER_CONFIG.BASE_URL}/payment/cancel`,
       success_url: `${SERVER_CONFIG.BASE_URL}/payment/success`,
+      webhook_url: `${SERVER_CONFIG.BASE_URL}/callback/ragapay`,
       customer: {
         name: ctx.from.first_name || "Telegram User",
         email: `user${userId}@telegram.com`,

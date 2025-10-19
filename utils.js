@@ -13,12 +13,22 @@ export function createAdminManager() {
   const admins = new Set([MASTER_ADMIN_ID]);
 
   return {
-    isMasterAdmin: (userId) => userId === MASTER_ADMIN_ID,
-    isAdmin: (userId) => admins.has(userId),
-    addAdmin: (userId) => admins.add(userId),
+    isMasterAdmin: (userId) => {
+      // Convert both to strings for comparison to handle type mismatches
+      return userId.toString() === MASTER_ADMIN_ID.toString();
+    },
+    isAdmin: (userId) => {
+      // Check both string and number versions
+      return admins.has(userId) || admins.has(userId.toString());
+    },
+    addAdmin: (userId) => {
+      // Store as string to maintain consistency
+      admins.add(userId.toString());
+    },
     removeAdmin: (userId) => {
-      if (userId !== MASTER_ADMIN_ID) {
+      if (userId.toString() !== MASTER_ADMIN_ID.toString()) {
         admins.delete(userId);
+        admins.delete(userId.toString());
       }
     },
     getAllAdmins: () => Array.from(admins),

@@ -150,12 +150,14 @@ export function handleRefreshStatusCommand(ctx, dataStorage) {
     );
   }
 
-  // For now, just show current status with a note about webhook
+  // Show current status with webhook info
   const message =
     formatPaymentStatusMessage(session) +
-    "\n\n🔄 **Note:** Status updates automatically via webhooks.\n" +
-    "If payment was completed but status shows pending, the webhook may not have been received yet.\n" +
-    "You can check your payment directly on the Ragapay checkout page.";
+    "\n\n🔄 **Status Updates:**\n" +
+    "• Status updates automatically via webhooks\n" +
+    "• If payment completed but shows pending, webhook may be delayed\n" +
+    "• You can check payment status directly on Ragapay checkout page\n\n" +
+    "💡 **Note:** Payment status should update within a few minutes of completion.";
 
   ctx.reply(message);
 }

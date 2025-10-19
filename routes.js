@@ -350,10 +350,42 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
   router.get("/payment/success", (req, res) => {
     try {
       console.log("Payment success callback received:", req.query);
+      console.log("Query parameters:", JSON.stringify(req.query, null, 2));
+      console.log("Request URL:", req.url);
+      console.log("Request headers:", JSON.stringify(req.headers, null, 2));
 
       const { payment_id, trans_id, order_id, hash } = req.query;
 
-      if (payment_id && order_id) {
+      // If no parameters in query, try to get order from session or manual update
+      if (!payment_id && !order_id) {
+        console.log(
+          "No callback parameters received, checking for active sessions..."
+        );
+
+        // Get the most recent session for debugging
+        const sessions = Array.from(dataStorage.userSessions.entries());
+        if (sessions.length > 0) {
+          const [userId, session] = sessions[sessions.length - 1];
+          console.log(`Found recent session for user ${userId}:`, session);
+
+          // Update the most recent session to completed
+          session.status = "completed";
+          session.updatedAt = new Date();
+
+          console.log(
+            `Updated most recent session to completed for user ${userId}`
+          );
+
+          // Send notification to user
+          try {
+            const statusMessage = getPaymentStatusMessage(session, "completed");
+            bot.telegram.sendMessage(userId, statusMessage);
+            console.log(`Notification sent to user ${userId}`);
+          } catch (notifyError) {
+            console.error("Failed to send notification:", notifyError);
+          }
+        }
+      } else if (payment_id && order_id) {
         // Find user session by order_id
         let userId = null;
         for (const [uid, session] of dataStorage.userSessions.entries()) {
@@ -399,11 +431,18 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
             body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
             .success { color: #28a745; font-size: 24px; }
             .message { margin: 20px 0; }
+            .debug { font-size: 12px; color: #666; margin-top: 20px; }
           </style>
         </head>
         <body>
           <div class="success">✅ Payment Successful!</div>
           <div class="message">Thank you for your payment. You can close this window and return to Telegram.</div>
+          <div class="debug">
+            Debug Info:<br>
+            Order ID: ${order_id || "Not provided"}<br>
+            Payment ID: ${payment_id || "Not provided"}<br>
+            Timestamp: ${new Date().toISOString()}
+          </div>
         </body>
         </html>
       `);

@@ -114,6 +114,80 @@ bot.command("status", (ctx) => handleStatusCommand(ctx, dataStorage));
 bot.command("refresh", (ctx) => handleRefreshStatusCommand(ctx, dataStorage));
 bot.command("cancel", (ctx) => handleCancelCommand(ctx, dataStorage));
 
+// Admin status check commands
+bot.command("adminstatus", (ctx) => {
+  const userId = ctx.from.id;
+  const isAdmin = adminManager.isAdmin(userId);
+  const isMasterAdmin = adminManager.isMasterAdmin(userId);
+
+  let message = `🔍 **Admin Status Check**\n\n`;
+  message += `🆔 Your User ID: ${userId}\n`;
+  message += `🔐 Admin Status: ${isAdmin ? "✅ Yes" : "❌ No"}\n`;
+  message += `👑 Master Admin: ${isMasterAdmin ? "✅ Yes" : "❌ No"}\n\n`;
+
+  if (isMasterAdmin) {
+    message += `🎯 **Master Admin Commands:**\n`;
+    message += `• /addadmin <user_id> - Add admin\n`;
+    message += `• /removeadmin <user_id> - Remove admin\n`;
+    message += `• /listadmins - List all admins\n`;
+    message += `• /addproduct - Add product\n`;
+    message += `• /deleteproduct <id> - Delete product\n`;
+    message += `• /listproducts - List products (admin view)\n`;
+  } else if (isAdmin) {
+    message += `🎯 **Admin Commands:**\n`;
+    message += `• /addproduct - Add product\n`;
+    message += `• /deleteproduct <id> - Delete product\n`;
+    message += `• /listproducts - List products (admin view)\n`;
+    message += `• /listadmins - List all admins\n`;
+  } else {
+    message += `❌ You don't have admin privileges.\n`;
+    message += `Contact the master admin for access.\n\n`;
+    message += `👑 Master Admin ID: ${adminManager.getMasterAdminId()}`;
+  }
+
+  ctx.reply(message);
+});
+
+// Quick admin check command
+bot.command("checkadmin", (ctx) => {
+  const userId = ctx.from.id;
+  const isAdmin = adminManager.isAdmin(userId);
+  const isMaster = adminManager.isMasterAdmin(userId);
+
+  let message = `🔍 **Quick Admin Check**\n\n`;
+  message += `🆔 User ID: ${userId}\n`;
+  message += `✅ Admin: ${isAdmin ? "Yes" : "No"}\n`;
+  message += `👑 Master: ${isMaster ? "Yes" : "No"}\n`;
+
+  if (isAdmin) {
+    message += `\n🎯 You have admin privileges!`;
+  } else {
+    message += `\n❌ No admin privileges.`;
+  }
+
+  ctx.reply(message);
+});
+
+// Debug admin status command
+bot.command("debugadmin", (ctx) => {
+  const userId = ctx.from.id;
+  const masterAdminId = adminManager.getMasterAdminId();
+  const allAdmins = adminManager.getAllAdmins();
+
+  let message = `🔧 **Debug Admin Status**\n\n`;
+  message += `🆔 Your User ID: ${userId} (type: ${typeof userId})\n`;
+  message += `👑 Master Admin ID: ${masterAdminId} (type: ${typeof masterAdminId})\n`;
+  message += `🔍 String comparison: ${
+    userId.toString() === masterAdminId.toString()
+  }\n`;
+  message += `🔍 Direct comparison: ${userId === masterAdminId}\n`;
+  message += `✅ Is Admin: ${adminManager.isAdmin(userId)}\n`;
+  message += `👑 Is Master Admin: ${adminManager.isMasterAdmin(userId)}\n\n`;
+  message += `📋 All Admins: ${allAdmins.join(", ")}\n`;
+
+  ctx.reply(message);
+});
+
 // Admin commands (with access control)
 bot.command(
   "addproduct",
