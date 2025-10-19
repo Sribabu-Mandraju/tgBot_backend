@@ -569,14 +569,16 @@ export async function createPaymentSession(
       productName: productName || null,
       productDescription: productDescription || null,
       description: description || null,
-      billingAddress: {
-        country: address.country,
-        state: address.state,
-        city: address.city,
-        address: address.address,
-        zip: address.zip,
-        phone: address.phone,
-      },
+      billingAddress: address.country
+        ? {
+            country: address.country,
+            state: address.state,
+            city: address.city,
+            address: address.address,
+            zip: address.zip,
+            phone: address.phone,
+          }
+        : null, // No address collected - RagaPay will collect it
     };
 
     // Store in database
@@ -584,19 +586,18 @@ export async function createPaymentSession(
 
     console.log(`Payment session created for user ${userId}: ${checkoutUrl}`);
 
-    // Clear address collection data
-    dataStorage.userAddressCollection.delete(userId);
+    // Clear address collection data if it exists
+    if (dataStorage.userAddressCollection.has(userId)) {
+      dataStorage.userAddressCollection.delete(userId);
+    }
 
     const message =
       `💳 **Payment Session Created!**\n\n` +
       `Amount: ${amount} ${currency}\n` +
       `Order: ${orderNumber}\n\n` +
-      `📍 **Billing Address:**\n` +
-      `${address.address}, ${address.city}\n` +
-      `${address.state} ${address.zip}, ${address.country}\n` +
-      `📞 ${address.phone}\n\n` +
       `🔗 **Click the link below to complete your payment:**\n` +
       `${checkoutUrl}\n\n` +
+      `💡 **Note:** You'll enter your billing address on the secure payment page.\n\n` +
       `Use /status to check your payment status.`;
 
     ctx.reply(message);

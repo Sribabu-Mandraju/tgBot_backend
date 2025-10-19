@@ -41,7 +41,7 @@ export async function handleModifyProductCommand(
 
   if (args.length === 0) {
     return ctx.reply(
-      '❌ Invalid format. Use: /modifyproduct <product_name>\nExample: /modifyproduct "Premium Plan"\n\nUse /products to see available products.'
+      "❌ Invalid format. Use: /modifyproduct <product_name>\nExample: /modifyproduct Premium Plan\n\nUse /products to see available products."
     );
   }
 
@@ -49,15 +49,17 @@ export async function handleModifyProductCommand(
   const productName = args.join(" ");
 
   try {
-    // Find product by name (case-sensitive)
+    // Find product by name (case-insensitive)
     const products = await productManager.getAllProducts();
-    const product = products.find((p) => p.title === productName);
+    const product = products.find(
+      (p) => p.title.toLowerCase() === productName.toLowerCase()
+    );
 
     if (!product) {
       return ctx.reply(
         `❌ Product "${productName}" not found.\n\n` +
           `Use /products to see available products.\n` +
-          `Note: Product names are case-sensitive.`
+          `Note: Product names are case-insensitive.`
       );
     }
 
@@ -115,7 +117,7 @@ export async function handleBuyCommand(ctx, productManager, dataStorage) {
 
   if (args.length === 0) {
     return ctx.reply(
-      '❌ Invalid format. Use: /buy <product_name>\nExample: /buy "Premium Plan"\n\nUse /products to see available products.'
+      "❌ Invalid format. Use: /buy <product_name>\nExample: /buy Premium Plan\n\nUse /products to see available products."
     );
   }
 
@@ -123,42 +125,41 @@ export async function handleBuyCommand(ctx, productManager, dataStorage) {
   const productName = args.join(" ");
 
   try {
-    // Find product by name (case-sensitive)
+    // Find product by name (case-insensitive)
     const products = await productManager.getAllProducts();
-    const product = products.find((p) => p.title === productName);
+    const product = products.find(
+      (p) => p.title.toLowerCase() === productName.toLowerCase()
+    );
 
     if (!product) {
       return ctx.reply(
         `❌ Product "${productName}" not found.\n\n` +
           `Use /products to see available products.\n` +
-          `Note: Product names are case-sensitive.`
+          `Note: Product names are case-insensitive.`
       );
     }
 
-    // Store product selection and start address collection
-    dataStorage.userAddressCollection.set(userId, {
+    // Create payment session directly (RagaPay will collect address)
+    console.log(
+      `Creating payment session for user ${userId}, product: ${product.title}`
+    );
+
+    // Import createPaymentSession function
+    const { createPaymentSession } = await import("../ragapay.js");
+
+    // Create payment data object
+    const paymentData = {
       amount: product.amount,
       currency: product.currency,
       productId: product._id,
       productName: product.title,
       productDescription: product.description,
-      step: "country",
-      address: {},
-    });
+      description: product.description,
+      address: {}, // Empty address - RagaPay will collect it
+    };
 
-    console.log(
-      `Starting address collection for user ${userId}, product: ${product.title}`
-    );
-
-    ctx.reply(
-      `🛒 **Product Selected:**\n\n` +
-        `📝 **Name:** ${product.title}\n` +
-        `💰 **Price:** ${product.amount} ${product.currency}\n` +
-        `📄 **Description:** ${product.description}\n\n` +
-        `📍 **Please provide your billing address:**\n\n` +
-        `**Step 1/6: Country**\n` +
-        `Please enter your country (e.g., US, UK, CA):`
-    );
+    // Create payment session directly
+    await createPaymentSession(ctx, userId, paymentData, dataStorage);
   } catch (error) {
     console.error("Error processing buy command:", error);
     ctx.reply("❌ Failed to process purchase. Please try again later.");
@@ -169,7 +170,7 @@ export async function handleBuyCommand(ctx, productManager, dataStorage) {
 // PAYMENT COMMANDS
 // ============================================================================
 
-export function handlePayCommand(ctx, dataStorage) {
+export async function handlePayCommand(ctx, dataStorage) {
   const userId = ctx.from.id;
   const args = ctx.message.text.split(" ").slice(1);
 
@@ -202,29 +203,26 @@ export function handlePayCommand(ctx, dataStorage) {
   const amount = parseFloat(amountStr);
   const currencyUpper = currency.toUpperCase();
 
-  // Store payment info and start address collection
-  dataStorage.userAddressCollection.set(userId, {
-    amount,
-    currency: currencyUpper,
-    description: description,
-    step: "country",
-    address: {},
-  });
-
+  // Create payment session directly (RagaPay will collect address)
   console.log(
-    `Starting address collection for user ${userId}, amount: ${amount} ${currencyUpper}${
+    `Creating direct payment session for user ${userId}, amount: ${amount} ${currencyUpper}${
       description ? `, description: "${description}"` : ""
     }`
   );
 
-  const message =
-    `💳 **Direct Payment:** ${amount} ${currencyUpper}\n` +
-    (description ? `📝 **Description:** ${description}\n` : "") +
-    `\n📍 **Please provide your billing address:**\n\n` +
-    `**Step 1/6: Country**\n` +
-    `Please enter your country (e.g., US, UK, CA):`;
+  // Import createPaymentSession function
+  const { createPaymentSession } = await import("../ragapay.js");
 
-  ctx.reply(message);
+  // Create payment data object
+  const paymentData = {
+    amount,
+    currency: currencyUpper,
+    description: description,
+    address: {}, // Empty address - RagaPay will collect it
+  };
+
+  // Create payment session directly
+  await createPaymentSession(ctx, userId, paymentData, dataStorage);
 }
 
 export async function handleStatusCommand(ctx, dataStorage) {
@@ -284,18 +282,31 @@ export async function handleRefreshStatusCommand(ctx, dataStorage) {
 export function handleCancelCommand(ctx, dataStorage) {
   const userId = ctx.from.id;
 
+  // Check for any active processes to cancel
+  let cancelled = false;
+  let message = "ℹ️ No active processes to cancel.\n\n";
+
   if (dataStorage.userAddressCollection.has(userId)) {
     dataStorage.userAddressCollection.delete(userId);
-    ctx.reply(
-      "❌ Address collection cancelled.\n\n" +
-        "Use /pay <amount> <currency> or /buy <product_name> to start a new payment."
-    );
-  } else {
-    ctx.reply(
-      "ℹ️ No active processes to cancel.\n\n" +
-        "Use /pay <amount> <currency> or /buy <product_name> to start a payment."
-    );
+    cancelled = true;
+    message = "❌ Address collection cancelled.\n\n";
   }
+
+  if (dataStorage.userProductSelection.has(userId)) {
+    dataStorage.userProductSelection.delete(userId);
+    cancelled = true;
+    message = "❌ Product creation cancelled.\n\n";
+  }
+
+  if (dataStorage.userProductModification.has(userId)) {
+    dataStorage.userProductModification.delete(userId);
+    cancelled = true;
+    message = "❌ Product modification cancelled.\n\n";
+  }
+
+  message +=
+    "Use /pay <amount> <currency> or /buy <product_name> to start a new payment.";
+  ctx.reply(message);
 }
 
 // ============================================================================
@@ -347,12 +358,11 @@ export async function handleStartCommand(ctx, adminManager) {
     }
 
     welcomeMessage +=
-      `Examples: /buy "Premium Plan" or /pay 100 USD "Service fee"\n\n` +
+      `Examples: /buy Premium Plan or /pay 100 USD "Service fee"\n\n` +
       `💡 **Payment Process:**\n` +
       `1. Choose product or direct payment\n` +
-      `2. Provide billing address (6 steps)\n` +
-      `3. Complete payment on checkout page\n\n` +
-      `📝 **Note:** Product names are case-sensitive!`;
+      `2. Complete payment on secure checkout page\n\n` +
+      `📝 **Note:** Product names are case-insensitive!`;
 
     ctx.reply(welcomeMessage);
   } catch (error) {
@@ -383,11 +393,11 @@ export async function handleHelpCommand(ctx, adminManager) {
       `Supported currencies: USD, EUR, GBP, INR\n` +
       `Amount range: 1 to 1,000,000\n\n` +
       `Examples:\n` +
-      `• /buy "Premium Plan"\n` +
-      `• /buy "Basic Package"\n` +
+      `• /buy Premium Plan\n` +
+      `• /buy Basic Package\n` +
       `• /pay 50 USD\n` +
       `• /pay 25 EUR "Consulting fee"\n\n` +
-      `📝 **Note:** Product names are case-sensitive!`;
+      `📝 **Note:** Product names are case-insensitive!`;
 
     if (isAdmin) {
       helpMessage +=
@@ -409,8 +419,7 @@ export async function handleHelpCommand(ctx, adminManager) {
     helpMessage +=
       `💡 **Payment Process:**\n` +
       `1. Choose product or direct payment\n` +
-      `2. Provide billing address (6 steps)\n` +
-      `3. Complete payment on checkout page`;
+      `2. Complete payment on secure checkout page`;
 
     ctx.reply(helpMessage);
   } catch (error) {

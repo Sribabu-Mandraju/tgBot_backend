@@ -47,7 +47,6 @@ import {
 } from "./handlers/adminCommands.js";
 
 import {
-  handleAddressCollection,
   handleProductCreation,
   handleProductModification,
 } from "./handlers/textHandlers.js";
@@ -302,13 +301,6 @@ function setupBotHandlers(bot, adminManager, productManager, dataStorage) {
     const text = ctx.message.text;
 
     console.log(`Text message from user ${userId}: ${text}`);
-
-    // Check if user is in address collection mode
-    if (dataStorage.userAddressCollection.has(userId)) {
-      const addressData = dataStorage.userAddressCollection.get(userId);
-      handleAddressCollection(ctx, userId, text, addressData, dataStorage);
-      return;
-    }
 
     // Check if user is in product creation mode (admin only)
     if (
