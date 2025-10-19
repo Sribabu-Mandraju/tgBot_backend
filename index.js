@@ -98,6 +98,17 @@ async function initializeApp() {
     // Setup graceful shutdown
     setupGracefulShutdown(bot, server);
 
+    // Add global error handlers to prevent crashes
+    process.on("uncaughtException", (error) => {
+      console.error("💥 Uncaught Exception:", error);
+      // Don't exit immediately, let the graceful shutdown handle it
+    });
+
+    process.on("unhandledRejection", (reason, promise) => {
+      console.error("💥 Unhandled Rejection at:", promise, "reason:", reason);
+      // Don't exit immediately, let the graceful shutdown handle it
+    });
+
     console.log("✅ Bot initialization complete!");
     console.log(`👑 Master Admin ID: ${await adminManager.getMasterAdminId()}`);
     console.log(
@@ -337,32 +348,25 @@ function setupRoutes(app, bot, dataStorage, productManager, adminManager) {
 
 // Start bot
 async function startBot(bot) {
-  if (SERVER_CONFIG.NODE_ENV === "production") {
-    // Production: Use webhook with Express server
-    console.log("🔗 Setting up webhook for production...");
+  try {
+    if (SERVER_CONFIG.NODE_ENV === "production") {
+      // Production: Use webhook with Express server
+      console.log("🔗 Setting up webhook for production...");
 
-    // Set webhook URL
-    bot.telegram
-      .setWebhook(`${SERVER_CONFIG.BASE_URL}/webhook/telegram`)
-      .then(() => {
-        console.log("✅ Bot webhook set successfully");
-      })
-      .catch((error) => {
-        console.error("❌ Failed to set webhook:", error);
-        process.exit(1);
-      });
-  } else {
-    // Development: Use polling
-    console.log("🔄 Starting bot with polling...");
-    bot
-      .launch()
-      .then(() => {
-        console.log("✅ Bot started successfully with polling");
-      })
-      .catch((error) => {
-        console.error("❌ Failed to start bot:", error);
-        process.exit(1);
-      });
+      // Set webhook URL
+      await bot.telegram.setWebhook(
+        `${SERVER_CONFIG.BASE_URL}/webhook/telegram`
+      );
+      console.log("✅ Bot webhook set successfully");
+    } else {
+      // Development: Use polling
+      console.log("🔄 Starting bot with polling...");
+      await bot.launch();
+      console.log("✅ Bot started successfully with polling");
+    }
+  } catch (error) {
+    console.error("❌ Failed to start bot:", error);
+    throw error; // Re-throw to be caught by initializeApp
   }
 }
 
@@ -370,9 +374,26 @@ async function startBot(bot) {
 function setupGracefulShutdown(bot, server) {
   process.on("SIGINT", async () => {
     console.log("\n🛑 Shutting down gracefully...");
-    bot.stop("SIGINT");
+    try {
+      // Check if bot is running before stopping
+      if (bot && typeof bot.stop === "function") {
+        await bot.stop("SIGINT");
+        console.log("✅ Bot stopped");
+      }
+    } catch (error) {
+      console.log(
+        "⚠️ Bot was already stopped or error stopping bot:",
+        error.message
+      );
+    }
+
     server.close(async () => {
-      await disconnectFromDatabase();
+      try {
+        await disconnectFromDatabase();
+        console.log("✅ Database disconnected");
+      } catch (error) {
+        console.log("⚠️ Error disconnecting from database:", error.message);
+      }
       console.log("✅ Server closed");
       process.exit(0);
     });
@@ -380,12 +401,61 @@ function setupGracefulShutdown(bot, server) {
 
   process.on("SIGTERM", async () => {
     console.log("\n🛑 Shutting down gracefully...");
-    bot.stop("SIGTERM");
+    try {
+      // Check if bot is running before stopping
+      if (bot && typeof bot.stop === "function") {
+        await bot.stop("SIGTERM");
+        console.log("✅ Bot stopped");
+      }
+    } catch (error) {
+      console.log(
+        "⚠️ Bot was already stopped or error stopping bot:",
+        error.message
+      );
+    }
+
     server.close(async () => {
-      await disconnectFromDatabase();
+      try {
+        await disconnectFromDatabase();
+        console.log("✅ Database disconnected");
+      } catch (error) {
+        console.log("⚠️ Error disconnecting from database:", error.message);
+      }
       console.log("✅ Server closed");
       process.exit(0);
     });
+  });
+
+  // Handle uncaught exceptions
+  process.on("uncaughtException", async (error) => {
+    console.error("💥 Uncaught Exception:", error);
+    try {
+      if (bot && typeof bot.stop === "function") {
+        await bot.stop("uncaughtException");
+      }
+    } catch (stopError) {
+      console.error(
+        "Error stopping bot during uncaught exception:",
+        stopError.message
+      );
+    }
+    process.exit(1);
+  });
+
+  // Handle unhandled promise rejections
+  process.on("unhandledRejection", async (reason, promise) => {
+    console.error("💥 Unhandled Rejection at:", promise, "reason:", reason);
+    try {
+      if (bot && typeof bot.stop === "function") {
+        await bot.stop("unhandledRejection");
+      }
+    } catch (stopError) {
+      console.error(
+        "Error stopping bot during unhandled rejection:",
+        stopError.message
+      );
+    }
+    process.exit(1);
   });
 }
 

@@ -432,10 +432,11 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
             updatedPayment,
             "completed"
           );
-          bot.telegram.sendMessage(userId, statusMessage);
+          await bot.telegram.sendMessage(userId, statusMessage);
           console.log(`📱 Notification sent to user ${userId}`);
         } catch (notifyError) {
           console.error("Failed to send notification:", notifyError);
+          // Don't throw the error, just log it to prevent crashes
         }
       } else {
         console.log(
@@ -525,10 +526,11 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
             updatedPayment,
             "cancelled"
           );
-          bot.telegram.sendMessage(userId, statusMessage);
+          await bot.telegram.sendMessage(userId, statusMessage);
           console.log(`📱 Notification sent to user ${userId}`);
         } catch (notifyError) {
           console.error("Failed to send notification:", notifyError);
+          // Don't throw the error, just log it to prevent crashes
         }
       } else {
         console.log(
