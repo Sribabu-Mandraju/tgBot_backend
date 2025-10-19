@@ -176,3 +176,4 @@ paymentSchema.statics.getUserPaymentHistory = function (userId, limit = 10) {
 const Payment = mongoose.model("Payment", paymentSchema);
 
 export default Payment;
+
