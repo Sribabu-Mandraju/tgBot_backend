@@ -101,7 +101,7 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
   });
 
   // Ragapay webhook endpoint for payment status updates
-  router.post("/webhook/ragapay", (req, res) => {
+  router.post("/webhook/ragapay", async (req, res) => {
     try {
       console.log("=== RAGAPAY WEBHOOK RECEIVED ===");
       console.log("Headers:", JSON.stringify(req.headers, null, 2));
@@ -153,37 +153,26 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
         `Processing webhook - Order: ${orderNumber}, Status: ${status}`
       );
 
-      // Find the user session by order number
-      let userId = null;
-      for (const [uid, session] of dataStorage.userSessions.entries()) {
-        if (session.orderNumber === orderNumber) {
-          userId = uid;
-          break;
-        }
-      }
+      // Update payment status in database
+      const updatedPayment = await dataStorage.updatePaymentStatus(
+        orderNumber,
+        status.toLowerCase(),
+        transactionId,
+        paymentId
+      );
 
-      if (!userId) {
+      if (!updatedPayment) {
         console.error("User session not found for order:", orderNumber);
-        console.log(
-          "Available sessions:",
-          Array.from(dataStorage.userSessions.keys())
-        );
         return res.status(404).json({ error: "User session not found" });
       }
 
-      // Update payment status
-      const session = dataStorage.userSessions.get(userId);
-      if (session) {
-        session.status = status.toLowerCase();
-        session.transactionId = transaction_id;
-        session.updatedAt = new Date();
+      console.log(
+        `Payment status updated for user ${updatedPayment.userId}: ${status}`
+      );
 
-        console.log(`Payment status updated for user ${userId}: ${status}`);
-
-        // Send notification to user
-        const statusMessage = getPaymentStatusMessage(session, status);
-        bot.telegram.sendMessage(userId, statusMessage);
-      }
+      // Send notification to user
+      const statusMessage = getPaymentStatusMessage(updatedPayment, status);
+      bot.telegram.sendMessage(updatedPayment.userId, statusMessage);
 
       res.status(200).json({ status: "OK" });
     } catch (error) {
@@ -193,7 +182,7 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
   });
 
   // Ragapay callback endpoint (based on official documentation)
-  router.post("/callback/ragapay", (req, res) => {
+  router.post("/callback/ragapay", async (req, res) => {
     try {
       console.log("=== RAGAPAY CALLBACK RECEIVED ===");
       console.log("Headers:", JSON.stringify(req.headers, null, 2));
@@ -223,54 +212,41 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
         `Processing callback - Order: ${order_id}, Payment ID: ${payment_id}`
       );
 
-      // Find the user session by order number
-      let userId = null;
-      for (const [uid, session] of dataStorage.userSessions.entries()) {
-        if (session.orderNumber === order_id) {
-          userId = uid;
-          break;
-        }
+      // Determine status based on callback data
+      let newStatus = "completed"; // Default to completed for successful callbacks
+      if (payment_status) {
+        newStatus = payment_status.toLowerCase();
+      } else if (status) {
+        newStatus = status.toLowerCase();
       }
 
-      if (!userId) {
+      // Update payment status in database
+      const updatedPayment = await dataStorage.updatePaymentStatus(
+        order_id,
+        newStatus,
+        trans_id,
+        payment_id
+      );
+
+      if (!updatedPayment) {
         console.error("User session not found for order:", order_id);
-        console.log(
-          "Available sessions:",
-          Array.from(dataStorage.userSessions.keys())
-        );
         return res.status(404).json({ error: "User session not found" });
       }
 
-      // Update payment status
-      const session = dataStorage.userSessions.get(userId);
-      if (session) {
-        const oldStatus = session.status;
+      console.log(
+        `Payment status updated for user ${updatedPayment.userId}: ${newStatus}`
+      );
 
-        // Determine status based on callback data
-        let newStatus = "completed"; // Default to completed for successful callbacks
-        if (payment_status) {
-          newStatus = payment_status.toLowerCase();
-        } else if (status) {
-          newStatus = status.toLowerCase();
-        }
-
-        session.status = newStatus;
-        session.transactionId = trans_id;
-        session.paymentId = payment_id;
-        session.updatedAt = new Date();
-
-        console.log(
-          `Payment status updated for user ${userId}: ${oldStatus} -> ${newStatus}`
+      // Send notification to user
+      try {
+        const statusMessage = getPaymentStatusMessage(
+          updatedPayment,
+          newStatus
         );
-
-        // Send notification to user
-        try {
-          const statusMessage = getPaymentStatusMessage(session, newStatus);
-          bot.telegram.sendMessage(userId, statusMessage);
-          console.log(`Notification sent to user ${userId}`);
-        } catch (notifyError) {
-          console.error("Failed to send notification:", notifyError);
-        }
+        bot.telegram.sendMessage(updatedPayment.userId, statusMessage);
+        console.log(`Notification sent to user ${updatedPayment.userId}`);
+      } catch (notifyError) {
+        console.error("Failed to send notification:", notifyError);
       }
 
       res
@@ -283,7 +259,7 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
   });
 
   // Manual status update endpoint (for testing)
-  router.post("/manual-status-update", (req, res) => {
+  router.post("/manual-status-update", async (req, res) => {
     try {
       const { orderNumber, status, userId } = req.body;
 
@@ -295,51 +271,35 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
         `Manual status update - Order: ${orderNumber}, Status: ${status}`
       );
 
-      // Find user session
-      let targetUserId = userId;
-      if (!targetUserId) {
-        for (const [uid, session] of dataStorage.userSessions.entries()) {
-          if (session.orderNumber === orderNumber) {
-            targetUserId = uid;
-            break;
-          }
-        }
-      }
+      // Update payment status in database
+      const updatedPayment = await dataStorage.updatePaymentStatus(
+        orderNumber,
+        status.toLowerCase()
+      );
 
-      if (!targetUserId) {
+      if (!updatedPayment) {
         return res.status(404).json({ error: "User session not found" });
       }
 
-      // Update status
-      const session = dataStorage.userSessions.get(targetUserId);
-      if (session) {
-        const oldStatus = session.status;
-        session.status = status.toLowerCase();
-        session.updatedAt = new Date();
+      console.log(
+        `Manual status update for user ${updatedPayment.userId}: ${status}`
+      );
 
-        console.log(
-          `Manual status update for user ${targetUserId}: ${oldStatus} -> ${status}`
-        );
-
-        // Send notification
-        try {
-          const statusMessage = getPaymentStatusMessage(session, status);
-          bot.telegram.sendMessage(targetUserId, statusMessage);
-        } catch (notifyError) {
-          console.error("Failed to send notification:", notifyError);
-        }
-
-        res.json({
-          status: "OK",
-          message: "Status updated successfully",
-          userId: targetUserId,
-          orderNumber: orderNumber,
-          oldStatus: oldStatus,
-          newStatus: status,
-        });
-      } else {
-        res.status(404).json({ error: "Session not found" });
+      // Send notification
+      try {
+        const statusMessage = getPaymentStatusMessage(updatedPayment, status);
+        bot.telegram.sendMessage(updatedPayment.userId, statusMessage);
+      } catch (notifyError) {
+        console.error("Failed to send notification:", notifyError);
       }
+
+      res.json({
+        status: "OK",
+        message: "Status updated successfully",
+        userId: updatedPayment.userId,
+        orderNumber: orderNumber,
+        newStatus: status,
+      });
     } catch (error) {
       console.error("Manual status update error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -347,7 +307,7 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
   });
 
   // Payment success callback
-  router.get("/payment/success", (req, res) => {
+  router.get("/payment/success", async (req, res) => {
     try {
       console.log("Payment success callback received:", req.query);
       console.log("Query parameters:", JSON.stringify(req.query, null, 2));
@@ -363,61 +323,58 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
         );
 
         // Get the most recent session for debugging
-        const sessions = Array.from(dataStorage.userSessions.entries());
-        if (sessions.length > 0) {
-          const [userId, session] = sessions[sessions.length - 1];
-          console.log(`Found recent session for user ${userId}:`, session);
+        const recentPayment = await dataStorage.getActiveUserPayment(userId);
+        if (recentPayment) {
+          console.log(
+            `Found recent session for user ${recentPayment.userId}:`,
+            recentPayment
+          );
 
           // Update the most recent session to completed
-          session.status = "completed";
-          session.updatedAt = new Date();
+          await dataStorage.updatePaymentStatus(
+            recentPayment.orderNumber,
+            "completed"
+          );
 
           console.log(
-            `Updated most recent session to completed for user ${userId}`
+            `Updated most recent session to completed for user ${recentPayment.userId}`
           );
 
           // Send notification to user
           try {
-            const statusMessage = getPaymentStatusMessage(session, "completed");
-            bot.telegram.sendMessage(userId, statusMessage);
-            console.log(`Notification sent to user ${userId}`);
+            const statusMessage = getPaymentStatusMessage(
+              recentPayment,
+              "completed"
+            );
+            bot.telegram.sendMessage(recentPayment.userId, statusMessage);
+            console.log(`Notification sent to user ${recentPayment.userId}`);
           } catch (notifyError) {
             console.error("Failed to send notification:", notifyError);
           }
         }
       } else if (payment_id && order_id) {
-        // Find user session by order_id
-        let userId = null;
-        for (const [uid, session] of dataStorage.userSessions.entries()) {
-          if (session.orderNumber === order_id) {
-            userId = uid;
-            break;
-          }
-        }
+        // Update payment status in database
+        const updatedPayment = await dataStorage.updatePaymentStatus(
+          order_id,
+          "completed",
+          trans_id,
+          payment_id
+        );
 
-        if (userId) {
-          // Update payment status to completed
-          const session = dataStorage.userSessions.get(userId);
-          if (session) {
-            session.status = "completed";
-            session.transactionId = trans_id;
-            session.paymentId = payment_id;
-            session.updatedAt = new Date();
+        if (updatedPayment) {
+          console.log(
+            `Payment completed for user ${updatedPayment.userId}, order: ${order_id}`
+          );
 
-            console.log(
-              `Payment completed for user ${userId}, order: ${order_id}`
+          // Send notification to user
+          try {
+            const statusMessage = getPaymentStatusMessage(
+              updatedPayment,
+              "completed"
             );
-
-            // Send notification to user
-            try {
-              const statusMessage = getPaymentStatusMessage(
-                session,
-                "completed"
-              );
-              bot.telegram.sendMessage(userId, statusMessage);
-            } catch (notifyError) {
-              console.error("Failed to send notification:", notifyError);
-            }
+            bot.telegram.sendMessage(updatedPayment.userId, statusMessage);
+          } catch (notifyError) {
+            console.error("Failed to send notification:", notifyError);
           }
         }
       }
@@ -453,45 +410,35 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
   });
 
   // Payment cancel callback
-  router.get("/payment/cancel", (req, res) => {
+  router.get("/payment/cancel", async (req, res) => {
     try {
       console.log("Payment cancel callback received:", req.query);
 
       const { payment_id, trans_id, order_id, hash } = req.query;
 
       if (payment_id && order_id) {
-        // Find user session by order_id
-        let userId = null;
-        for (const [uid, session] of dataStorage.userSessions.entries()) {
-          if (session.orderNumber === order_id) {
-            userId = uid;
-            break;
-          }
-        }
+        // Update payment status to cancelled in database
+        const updatedPayment = await dataStorage.updatePaymentStatus(
+          order_id,
+          "cancelled",
+          trans_id,
+          payment_id
+        );
 
-        if (userId) {
-          // Update payment status to cancelled
-          const session = dataStorage.userSessions.get(userId);
-          if (session) {
-            session.status = "cancelled";
-            session.transactionId = trans_id;
-            session.paymentId = payment_id;
-            session.updatedAt = new Date();
+        if (updatedPayment) {
+          console.log(
+            `Payment cancelled for user ${updatedPayment.userId}, order: ${order_id}`
+          );
 
-            console.log(
-              `Payment cancelled for user ${userId}, order: ${order_id}`
+          // Send notification to user
+          try {
+            const statusMessage = getPaymentStatusMessage(
+              updatedPayment,
+              "cancelled"
             );
-
-            // Send notification to user
-            try {
-              const statusMessage = getPaymentStatusMessage(
-                session,
-                "cancelled"
-              );
-              bot.telegram.sendMessage(userId, statusMessage);
-            } catch (notifyError) {
-              console.error("Failed to send notification:", notifyError);
-            }
+            bot.telegram.sendMessage(updatedPayment.userId, statusMessage);
+          } catch (notifyError) {
+            console.error("Failed to send notification:", notifyError);
           }
         }
       }

@@ -15,15 +15,20 @@ import { ERROR_MESSAGES } from "../config.js";
 // PRODUCT COMMANDS
 // ============================================================================
 
-export function handleProductsCommand(ctx, productManager) {
+export async function handleProductsCommand(ctx, productManager) {
   console.log(`User ${ctx.from.id} requested products list`);
-  const productList = productManager.getAllProducts();
 
-  const message = formatProductListMessage(productList);
-  ctx.reply(message);
+  try {
+    const productList = await productManager.getAllProducts();
+    const message = formatProductListMessage(productList);
+    ctx.reply(message);
+  } catch (error) {
+    console.error("Error getting products:", error);
+    ctx.reply("❌ Failed to load products. Please try again later.");
+  }
 }
 
-export function handleBuyCommand(ctx, productManager, dataStorage) {
+export async function handleBuyCommand(ctx, productManager, dataStorage) {
   const userId = ctx.from.id;
   const args = ctx.message.text.split(" ").slice(1);
 
@@ -35,38 +40,44 @@ export function handleBuyCommand(ctx, productManager, dataStorage) {
     );
   }
 
-  const productId = parseInt(args[0]);
-  const product = productManager.getProduct(productId);
+  const productId = args[0];
 
-  if (!product) {
-    return ctx.reply(
-      "❌ Product not found. Use /products to see available products."
+  try {
+    const product = await productManager.getProduct(productId);
+
+    if (!product) {
+      return ctx.reply(
+        "❌ Product not found. Use /products to see available products."
+      );
+    }
+
+    // Store product selection and start address collection
+    dataStorage.userAddressCollection.set(userId, {
+      amount: product.amount,
+      currency: product.currency,
+      productId: product._id,
+      productName: product.title,
+      step: "country",
+      address: {},
+    });
+
+    console.log(
+      `Starting address collection for user ${userId}, product: ${product.title}`
     );
+
+    ctx.reply(
+      `🛒 **Product Selected:**\n\n` +
+        `📝 **Name:** ${product.title}\n` +
+        `💰 **Price:** ${product.amount} ${product.currency}\n` +
+        `📄 **Description:** ${product.description}\n\n` +
+        `📍 **Please provide your billing address:**\n\n` +
+        `**Step 1/6: Country**\n` +
+        `Please enter your country (e.g., US, UK, CA):`
+    );
+  } catch (error) {
+    console.error("Error processing buy command:", error);
+    ctx.reply("❌ Failed to process purchase. Please try again later.");
   }
-
-  // Store product selection and start address collection
-  dataStorage.userAddressCollection.set(userId, {
-    amount: product.price,
-    currency: product.currency,
-    productId: product.id,
-    productName: product.name,
-    step: "country",
-    address: {},
-  });
-
-  console.log(
-    `Starting address collection for user ${userId}, product: ${product.name}`
-  );
-
-  ctx.reply(
-    `🛒 **Product Selected:**\n\n` +
-      `📝 **Name:** ${product.name}\n` +
-      `💰 **Price:** ${product.price} ${product.currency}\n` +
-      `📄 **Description:** ${product.description}\n\n` +
-      `📍 **Please provide your billing address:**\n\n` +
-      `**Step 1/6: Country**\n` +
-      `Please enter your country (e.g., US, UK, CA):`
-  );
 }
 
 // ============================================================================
@@ -120,46 +131,58 @@ export function handlePayCommand(ctx, dataStorage) {
   );
 }
 
-export function handleStatusCommand(ctx, dataStorage) {
+export async function handleStatusCommand(ctx, dataStorage) {
   const userId = ctx.from.id;
-  const session = dataStorage.userSessions.get(userId);
 
   console.log(`User ${userId} checked status`);
 
-  if (!session) {
-    return ctx.reply(
-      "📋 No active payment sessions found.\n" +
-        "Use /pay <amount> <currency> or /buy <product_id> to create a new payment."
-    );
-  }
+  try {
+    const session = dataStorage.userSessions.get(userId);
 
-  const message = formatPaymentStatusMessage(session);
-  ctx.reply(message);
+    if (!session) {
+      return ctx.reply(
+        "📋 No active payment sessions found.\n" +
+          "Use /pay <amount> <currency> or /buy <product_id> to create a new payment."
+      );
+    }
+
+    const message = formatPaymentStatusMessage(session);
+    ctx.reply(message);
+  } catch (error) {
+    console.error("Error checking status:", error);
+    ctx.reply("❌ Failed to check status. Please try again later.");
+  }
 }
 
-export function handleRefreshStatusCommand(ctx, dataStorage) {
+export async function handleRefreshStatusCommand(ctx, dataStorage) {
   const userId = ctx.from.id;
-  const session = dataStorage.userSessions.get(userId);
 
   console.log(`User ${userId} requested status refresh`);
 
-  if (!session) {
-    return ctx.reply(
-      "📋 No active payment sessions found.\n" +
-        "Use /pay <amount> <currency> or /buy <product_id> to create a new payment."
-    );
+  try {
+    const session = dataStorage.userSessions.get(userId);
+
+    if (!session) {
+      return ctx.reply(
+        "📋 No active payment sessions found.\n" +
+          "Use /pay <amount> <currency> or /buy <product_id> to create a new payment."
+      );
+    }
+
+    // Show current status with webhook info
+    const message =
+      formatPaymentStatusMessage(session) +
+      "\n\n🔄 **Status Updates:**\n" +
+      "• Status updates automatically via webhooks\n" +
+      "• If payment completed but shows pending, webhook may be delayed\n" +
+      "• You can check payment status directly on Ragapay checkout page\n\n" +
+      "💡 **Note:** Payment status should update within a few minutes of completion.";
+
+    ctx.reply(message);
+  } catch (error) {
+    console.error("Error refreshing status:", error);
+    ctx.reply("❌ Failed to refresh status. Please try again later.");
   }
-
-  // Show current status with webhook info
-  const message =
-    formatPaymentStatusMessage(session) +
-    "\n\n🔄 **Status Updates:**\n" +
-    "• Status updates automatically via webhooks\n" +
-    "• If payment completed but shows pending, webhook may be delayed\n" +
-    "• You can check payment status directly on Ragapay checkout page\n\n" +
-    "💡 **Note:** Payment status should update within a few minutes of completion.";
-
-  ctx.reply(message);
 }
 
 export function handleCancelCommand(ctx, dataStorage) {
@@ -183,97 +206,113 @@ export function handleCancelCommand(ctx, dataStorage) {
 // HELP COMMANDS
 // ============================================================================
 
-export function handleStartCommand(ctx, adminManager) {
+export async function handleStartCommand(ctx, adminManager) {
   console.log(`User ${ctx.from.id} started the bot`);
   const userId = ctx.from.id;
 
-  let welcomeMessage = `🤖 Welcome to the Payment Bot!\n\n`;
+  try {
+    let welcomeMessage = `🤖 Welcome to the Payment Bot!\n\n`;
 
-  if (adminManager.isMasterAdmin(userId)) {
-    welcomeMessage += `👑 **Master Admin Access**\n\n`;
-  } else if (adminManager.isAdmin(userId)) {
-    welcomeMessage += `🔧 **Admin Access**\n\n`;
-  }
+    const isMasterAdmin = await adminManager.isMasterAdmin(userId);
+    const isAdmin = await adminManager.isAdmin(userId);
 
-  welcomeMessage +=
-    `I can help you process payments securely using Ragapay.\n\n` +
-    `Available commands:\n` +
-    `• /help - Show help message\n` +
-    `• /products - View available products\n` +
-    `• /buy <product_id> - Buy a product\n` +
-    `• /pay <amount> <currency> - Direct payment\n` +
-    `• /status - Check payment status\n` +
-    `• /refresh - Refresh payment status\n` +
-    `• /cancel - Cancel current process\n\n`;
+    if (isMasterAdmin) {
+      welcomeMessage += `👑 **Master Admin Access**\n\n`;
+    } else if (isAdmin) {
+      welcomeMessage += `🔧 **Admin Access**\n\n`;
+    }
 
-  if (adminManager.isAdmin(userId)) {
     welcomeMessage +=
-      `**Admin Commands:**\n` +
-      `• /addproduct - Add new product\n` +
-      `• /deleteproduct <id> - Delete product\n` +
-      `• /listproducts - List all products\n\n`;
-  }
+      `I can help you process payments securely using Ragapay.\n\n` +
+      `Available commands:\n` +
+      `• /help - Show help message\n` +
+      `• /products - View available products\n` +
+      `• /buy <product_id> - Buy a product\n` +
+      `• /pay <amount> <currency> - Direct payment\n` +
+      `• /status - Check payment status\n` +
+      `• /refresh - Refresh payment status\n` +
+      `• /cancel - Cancel current process\n\n`;
 
-  if (adminManager.isMasterAdmin(userId)) {
+    if (isAdmin) {
+      welcomeMessage +=
+        `**Admin Commands:**\n` +
+        `• /addproduct - Add new product\n` +
+        `• /deleteproduct <id> - Delete product\n` +
+        `• /listproducts - List all products\n\n`;
+    }
+
+    if (isMasterAdmin) {
+      welcomeMessage +=
+        `**Master Admin Commands:**\n` +
+        `• /addadmin <user_id> - Add admin\n` +
+        `• /removeadmin <user_id> - Remove admin\n` +
+        `• /listadmins - List all admins\n\n`;
+    }
+
     welcomeMessage +=
-      `**Master Admin Commands:**\n` +
-      `• /addadmin <user_id> - Add admin\n` +
-      `• /removeadmin <user_id> - Remove admin\n` +
-      `• /listadmins - List all admins\n\n`;
+      `Example: /buy 1 or /pay 100 USD\n\n` +
+      `💡 **Payment Process:**\n` +
+      `1. Choose product or direct payment\n` +
+      `2. Provide billing address (6 steps)\n` +
+      `3. Complete payment on checkout page`;
+
+    ctx.reply(welcomeMessage);
+  } catch (error) {
+    console.error("Error in start command:", error);
+    ctx.reply("❌ Failed to load welcome message. Please try again later.");
   }
-
-  welcomeMessage +=
-    `Example: /buy 1 or /pay 100 USD\n\n` +
-    `💡 **Payment Process:**\n` +
-    `1. Choose product or direct payment\n` +
-    `2. Provide billing address (6 steps)\n` +
-    `3. Complete payment on checkout page`;
-
-  ctx.reply(welcomeMessage);
 }
 
-export function handleHelpCommand(ctx, adminManager) {
+export async function handleHelpCommand(ctx, adminManager) {
   console.log(`User ${ctx.from.id} requested help`);
   const userId = ctx.from.id;
 
-  let helpMessage =
-    `📖 Payment Bot Help\n\n` +
-    `**User Commands:**\n` +
-    `• /start - Welcome message\n` +
-    `• /help - Show this help\n` +
-    `• /products - View available products\n` +
-    `• /buy <product_id> - Buy a product\n` +
-    `• /pay <amount> <currency> - Direct payment\n` +
-    `• /status - Check payment status\n` +
-    `• /refresh - Refresh payment status\n` +
-    `• /cancel - Cancel current process\n\n` +
-    `Supported currencies: USD, EUR, GBP, INR\n` +
-    `Amount range: 1 to 1,000,000\n\n` +
-    `Examples:\n` +
-    `• /buy 1\n` +
-    `• /pay 50 USD\n\n`;
+  try {
+    const isMasterAdmin = await adminManager.isMasterAdmin(userId);
+    const isAdmin = await adminManager.isAdmin(userId);
 
-  if (adminManager.isAdmin(userId)) {
+    let helpMessage =
+      `📖 Payment Bot Help\n\n` +
+      `**User Commands:**\n` +
+      `• /start - Welcome message\n` +
+      `• /help - Show this help\n` +
+      `• /products - View available products\n` +
+      `• /buy <product_id> - Buy a product\n` +
+      `• /pay <amount> <currency> - Direct payment\n` +
+      `• /status - Check payment status\n` +
+      `• /refresh - Refresh payment status\n` +
+      `• /cancel - Cancel current process\n\n` +
+      `Supported currencies: USD, EUR, GBP, INR\n` +
+      `Amount range: 1 to 1,000,000\n\n` +
+      `Examples:\n` +
+      `• /buy 1\n` +
+      `• /pay 50 USD\n\n`;
+
+    if (isAdmin) {
+      helpMessage +=
+        `**Admin Commands:**\n` +
+        `• /addproduct - Add new product\n` +
+        `• /deleteproduct <id> - Delete product\n` +
+        `• /listproducts - List all products\n\n`;
+    }
+
+    if (isMasterAdmin) {
+      helpMessage +=
+        `**Master Admin Commands:**\n` +
+        `• /addadmin <user_id> - Add admin\n` +
+        `• /removeadmin <user_id> - Remove admin\n` +
+        `• /listadmins - List all admins\n\n`;
+    }
+
     helpMessage +=
-      `**Admin Commands:**\n` +
-      `• /addproduct - Add new product\n` +
-      `• /deleteproduct <id> - Delete product\n` +
-      `• /listproducts - List all products\n\n`;
+      `💡 **Payment Process:**\n` +
+      `1. Choose product or direct payment\n` +
+      `2. Provide billing address (6 steps)\n` +
+      `3. Complete payment on checkout page`;
+
+    ctx.reply(helpMessage);
+  } catch (error) {
+    console.error("Error in help command:", error);
+    ctx.reply("❌ Failed to load help message. Please try again later.");
   }
-
-  if (adminManager.isMasterAdmin(userId)) {
-    helpMessage +=
-      `**Master Admin Commands:**\n` +
-      `• /addadmin <user_id> - Add admin\n` +
-      `• /removeadmin <user_id> - Remove admin\n` +
-      `• /listadmins - List all admins\n\n`;
-  }
-
-  helpMessage +=
-    `💡 **Payment Process:**\n` +
-    `1. Choose product or direct payment\n` +
-    `2. Provide billing address (6 steps)\n` +
-    `3. Complete payment on checkout page`;
-
-  ctx.reply(helpMessage);
 }

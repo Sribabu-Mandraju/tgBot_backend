@@ -14,6 +14,16 @@ export const SERVER_CONFIG = {
   NODE_ENV: process.env.NODE_ENV || "development",
 };
 
+// MongoDB Configuration
+export const MONGODB_CONFIG = {
+  URI:
+    process.env.MONGODB_URI || "mongodb://localhost:27017/telegram_payment_bot",
+  OPTIONS: {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  },
+};
+
 // Telegram Bot Configuration
 export const BOT_CONFIG = {
   TOKEN:

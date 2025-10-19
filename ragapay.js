@@ -547,8 +547,10 @@ export async function createPaymentSession(
       throw new Error("No checkout URL received from Ragapay");
     }
 
-    // Store session info
-    dataStorage.userSessions.set(userId, {
+    // Create payment session in database
+    const paymentSessionData = {
+      userId: userId.toString(),
+      chatId: ctx.chat.id.toString(),
       orderNumber,
       amount,
       currency: currency,
@@ -556,8 +558,18 @@ export async function createPaymentSession(
       checkoutUrl: checkoutUrl,
       productId: productId || null,
       productName: productName || null,
-      createdAt: new Date(),
-    });
+      billingAddress: {
+        country: address.country,
+        state: address.state,
+        city: address.city,
+        address: address.address,
+        zip: address.zip,
+        phone: address.phone,
+      },
+    };
+
+    // Store in database
+    await dataStorage.createPaymentSession(paymentSessionData);
 
     console.log(`Payment session created for user ${userId}: ${checkoutUrl}`);
 

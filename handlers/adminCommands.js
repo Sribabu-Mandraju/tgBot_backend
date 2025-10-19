@@ -30,7 +30,7 @@ export function handleAddProductCommand(ctx, dataStorage) {
   );
 }
 
-export function handleDeleteProductCommand(ctx, productManager) {
+export async function handleDeleteProductCommand(ctx, productManager) {
   const userId = ctx.from.id;
   const args = ctx.message.text.split(" ").slice(1);
 
@@ -38,33 +38,43 @@ export function handleDeleteProductCommand(ctx, productManager) {
     return ctx.reply("❌ Invalid format. Use: /deleteproduct <product_id>");
   }
 
-  const productId = parseInt(args[0]);
-  const product = productManager.getProduct(productId);
+  const productId = args[0];
 
-  if (!product) {
-    return ctx.reply(ERROR_MESSAGES.PRODUCT_NOT_FOUND);
+  try {
+    const product = await productManager.getProduct(productId);
+    if (!product) {
+      return ctx.reply(ERROR_MESSAGES.PRODUCT_NOT_FOUND);
+    }
+
+    await productManager.deleteProduct(productId);
+    ctx.reply(
+      `✅ Product "${product.title}" (ID: ${productId}) has been deleted.`
+    );
+  } catch (error) {
+    console.error("Error deleting product:", error);
+    ctx.reply("❌ Failed to delete product. Please try again later.");
   }
-
-  productManager.deleteProduct(productId);
-  ctx.reply(
-    `✅ Product "${product.name}" (ID: ${productId}) has been deleted.`
-  );
 }
 
-export function handleListProductsCommand(ctx, productManager) {
+export async function handleListProductsCommand(ctx, productManager) {
   const userId = ctx.from.id;
 
-  const productList = productManager.getAllProducts();
-  const message = formatAdminProductListMessage(productList);
+  try {
+    const productList = await productManager.getAllProductsForAdmin();
+    const message = formatAdminProductListMessage(productList);
 
-  ctx.reply(message);
+    ctx.reply(message);
+  } catch (error) {
+    console.error("Error listing products:", error);
+    ctx.reply("❌ Failed to list products. Please try again later.");
+  }
 }
 
 // ============================================================================
 // MASTER ADMIN COMMANDS
 // ============================================================================
 
-export function handleAddAdminCommand(ctx, adminManager) {
+export async function handleAddAdminCommand(ctx, adminManager) {
   const userId = ctx.from.id;
   const args = ctx.message.text.split(" ").slice(1);
 
@@ -80,11 +90,20 @@ export function handleAddAdminCommand(ctx, adminManager) {
     );
   }
 
-  adminManager.addAdmin(newAdminId);
-  ctx.reply(`✅ User ${newAdminId} has been added as an admin.`);
+  try {
+    await adminManager.addAdmin(newAdminId, "Admin User");
+    ctx.reply(`✅ User ${newAdminId} has been added as an admin.`);
+  } catch (error) {
+    if (error.message === "Admin already exists") {
+      ctx.reply(`❌ User ${newAdminId} is already an admin.`);
+    } else {
+      console.error("Error adding admin:", error);
+      ctx.reply("❌ Failed to add admin. Please try again later.");
+    }
+  }
 }
 
-export function handleRemoveAdminCommand(ctx, adminManager) {
+export async function handleRemoveAdminCommand(ctx, adminManager) {
   const userId = ctx.from.id;
   const args = ctx.message.text.split(" ").slice(1);
 
@@ -94,24 +113,34 @@ export function handleRemoveAdminCommand(ctx, adminManager) {
 
   const adminId = args[0];
 
-  if (adminId === adminManager.getMasterAdminId()) {
-    return ctx.reply("❌ Cannot remove master admin.");
+  try {
+    await adminManager.removeAdmin(adminId);
+    ctx.reply(`✅ User ${adminId} has been removed from admins.`);
+  } catch (error) {
+    if (error.message === "Cannot remove master admin") {
+      ctx.reply("❌ Cannot remove master admin.");
+    } else if (error.message === "Admin not found") {
+      ctx.reply(`❌ User ${adminId} is not an admin.`);
+    } else {
+      console.error("Error removing admin:", error);
+      ctx.reply("❌ Failed to remove admin. Please try again later.");
+    }
   }
-
-  adminManager.removeAdmin(adminId);
-  ctx.reply(`✅ User ${adminId} has been removed from admins.`);
 }
 
-export function handleListAdminsCommand(ctx, adminManager) {
+export async function handleListAdminsCommand(ctx, adminManager) {
   const userId = ctx.from.id;
 
-  const adminList = adminManager.getAllAdmins();
-  const message = formatAdminListMessage(
-    adminList,
-    adminManager.getMasterAdminId()
-  );
+  try {
+    const adminList = await adminManager.getAllAdmins();
+    const masterAdminId = await adminManager.getMasterAdminId();
+    const message = formatAdminListMessage(adminList, masterAdminId);
 
-  ctx.reply(message);
+    ctx.reply(message);
+  } catch (error) {
+    console.error("Error listing admins:", error);
+    ctx.reply("❌ Failed to list admins. Please try again later.");
+  }
 }
 
 // ============================================================================
@@ -119,25 +148,41 @@ export function handleListAdminsCommand(ctx, adminManager) {
 // ============================================================================
 
 export function requireAdminAccess(handler, adminManager) {
-  return (ctx, ...args) => {
+  return async (ctx, ...args) => {
     const userId = ctx.from.id;
 
-    if (!adminManager.isAdmin(userId)) {
-      return ctx.reply(ERROR_MESSAGES.ACCESS_DENIED);
-    }
+    try {
+      const isAdmin = await adminManager.isAdmin(userId);
+      if (!isAdmin) {
+        return ctx.reply(ERROR_MESSAGES.ACCESS_DENIED);
+      }
 
-    return handler(ctx, ...args);
+      return await handler(ctx, ...args);
+    } catch (error) {
+      console.error("Error checking admin access:", error);
+      return ctx.reply(
+        "❌ Error checking admin privileges. Please try again later."
+      );
+    }
   };
 }
 
 export function requireMasterAdminAccess(handler, adminManager) {
-  return (ctx, ...args) => {
+  return async (ctx, ...args) => {
     const userId = ctx.from.id;
 
-    if (!adminManager.isMasterAdmin(userId)) {
-      return ctx.reply(ERROR_MESSAGES.MASTER_ACCESS_DENIED);
-    }
+    try {
+      const isMasterAdmin = await adminManager.isMasterAdmin(userId);
+      if (!isMasterAdmin) {
+        return ctx.reply(ERROR_MESSAGES.MASTER_ACCESS_DENIED);
+      }
 
-    return handler(ctx, ...args);
+      return await handler(ctx, ...args);
+    } catch (error) {
+      console.error("Error checking master admin access:", error);
+      return ctx.reply(
+        "❌ Error checking master admin privileges. Please try again later."
+      );
+    }
   };
 }

@@ -3,36 +3,114 @@
 // ============================================================================
 
 import { VALIDATION_CONFIG, ERROR_MESSAGES } from "./config.js";
+import { Admin, Product, Payment } from "./models/index.js";
 
 // ============================================================================
 // ADMIN MANAGEMENT FUNCTIONS
 // ============================================================================
 
 export function createAdminManager() {
-  const MASTER_ADMIN_ID = process.env.MASTER_ADMIN_ID || "1360354055";
-  const admins = new Set([MASTER_ADMIN_ID]);
-
   return {
-    isMasterAdmin: (userId) => {
-      // Convert both to strings for comparison to handle type mismatches
-      return userId.toString() === MASTER_ADMIN_ID.toString();
-    },
-    isAdmin: (userId) => {
-      // Check both string and number versions
-      return admins.has(userId) || admins.has(userId.toString());
-    },
-    addAdmin: (userId) => {
-      // Store as string to maintain consistency
-      admins.add(userId.toString());
-    },
-    removeAdmin: (userId) => {
-      if (userId.toString() !== MASTER_ADMIN_ID.toString()) {
-        admins.delete(userId);
-        admins.delete(userId.toString());
+    async isMasterAdmin(userId) {
+      try {
+        const admin = await Admin.findByUserId(userId);
+        return admin && admin.role === "masteradmin";
+      } catch (error) {
+        console.error("Error checking master admin status:", error);
+        return false;
       }
     },
-    getAllAdmins: () => Array.from(admins),
-    getMasterAdminId: () => MASTER_ADMIN_ID,
+
+    async isAdmin(userId) {
+      try {
+        return await Admin.isAdmin(userId);
+      } catch (error) {
+        console.error("Error checking admin status:", error);
+        return false;
+      }
+    },
+
+    async addAdmin(userId, name = "Admin User") {
+      try {
+        const existingAdmin = await Admin.findByUserId(userId);
+        if (existingAdmin) {
+          throw new Error("Admin already exists");
+        }
+
+        const admin = new Admin({
+          userId: userId.toString(),
+          role: "admin",
+          name: name,
+        });
+
+        await admin.save();
+        console.log(`Admin added: ${userId} (${name})`);
+        return admin;
+      } catch (error) {
+        console.error("Error adding admin:", error);
+        throw error;
+      }
+    },
+
+    async removeAdmin(userId) {
+      try {
+        const admin = await Admin.findByUserId(userId);
+        if (!admin) {
+          throw new Error("Admin not found");
+        }
+
+        if (admin.role === "masteradmin") {
+          throw new Error("Cannot remove master admin");
+        }
+
+        await Admin.findOneAndDelete({ userId: userId.toString() });
+        console.log(`Admin removed: ${userId}`);
+        return true;
+      } catch (error) {
+        console.error("Error removing admin:", error);
+        throw error;
+      }
+    },
+
+    async getAllAdmins() {
+      try {
+        const admins = await Admin.findAllAdmins();
+        return admins.map((admin) => admin.userId);
+      } catch (error) {
+        console.error("Error getting all admins:", error);
+        return [];
+      }
+    },
+
+    async getMasterAdminId() {
+      try {
+        const masterAdmin = await Admin.findMasterAdmin();
+        return masterAdmin ? masterAdmin.userId : null;
+      } catch (error) {
+        console.error("Error getting master admin ID:", error);
+        return null;
+      }
+    },
+
+    async initializeMasterAdmin() {
+      try {
+        const masterAdminId = process.env.MASTER_ADMIN_ID || "1360354055";
+        const existingMaster = await Admin.findMasterAdmin();
+
+        if (!existingMaster) {
+          const masterAdmin = new Admin({
+            userId: masterAdminId,
+            role: "masteradmin",
+            name: "Master Admin",
+          });
+
+          await masterAdmin.save();
+          console.log(`Master admin initialized: ${masterAdminId}`);
+        }
+      } catch (error) {
+        console.error("Error initializing master admin:", error);
+      }
+    },
   };
 }
 
@@ -41,27 +119,86 @@ export function createAdminManager() {
 // ============================================================================
 
 export function createProductManager() {
-  const products = new Map();
-  let nextProductId = 1;
-
   return {
-    createProduct: (name, description, price, currency, createdBy) => {
-      const productId = nextProductId++;
-      products.set(productId, {
-        id: productId,
-        name,
-        description,
-        price: parseFloat(price),
-        currency: currency.toUpperCase(),
-        createdBy,
-        createdAt: new Date(),
-      });
-      return productId;
+    async createProduct(name, description, price, currency, createdBy) {
+      try {
+        const product = new Product({
+          title: name,
+          description: description,
+          amount: parseFloat(price),
+          currency: currency.toUpperCase(),
+          createdBy: createdBy.toString(),
+        });
+
+        await product.save();
+        console.log(`Product created: ${name} by ${createdBy}`);
+        return product._id;
+      } catch (error) {
+        console.error("Error creating product:", error);
+        throw error;
+      }
     },
-    getProduct: (productId) => products.get(parseInt(productId)),
-    getAllProducts: () => Array.from(products.values()),
-    deleteProduct: (productId) => products.delete(parseInt(productId)),
-    getProductCount: () => products.size,
+
+    async getProduct(productId) {
+      try {
+        return await Product.findProductById(productId);
+      } catch (error) {
+        console.error("Error getting product:", error);
+        return null;
+      }
+    },
+
+    async getAllProducts() {
+      try {
+        return await Product.findActiveProducts();
+      } catch (error) {
+        console.error("Error getting all products:", error);
+        return [];
+      }
+    },
+
+    async getAllProductsForAdmin() {
+      try {
+        return await Product.findAllProducts();
+      } catch (error) {
+        console.error("Error getting all products for admin:", error);
+        return [];
+      }
+    },
+
+    async deleteProduct(productId) {
+      try {
+        const product = await Product.findById(productId);
+        if (!product) {
+          throw new Error("Product not found");
+        }
+
+        await Product.softDeleteProduct(productId);
+        console.log(`Product deleted: ${productId}`);
+        return true;
+      } catch (error) {
+        console.error("Error deleting product:", error);
+        throw error;
+      }
+    },
+
+    async getProductCount() {
+      try {
+        return await Product.countDocuments({ isActive: true });
+      } catch (error) {
+        console.error("Error getting product count:", error);
+        return 0;
+      }
+    },
+
+    async getProductsByAdmin(adminId) {
+      try {
+        return await Product.findProductsByAdmin(adminId);
+      } catch (error) {
+        console.error("Error getting products by admin:", error);
+        return [];
+      }
+    },
   };
 }
 
@@ -142,9 +279,111 @@ export function createRateLimiter() {
 
 export function createDataStorage() {
   return {
+    // User sessions for active payments
     userSessions: new Map(),
+
+    // Address collection for ongoing processes
     userAddressCollection: new Map(),
+
+    // Product creation for ongoing processes
     userProductSelection: new Map(),
+
+    // Payment management functions
+    async createPaymentSession(paymentData) {
+      try {
+        const payment = new Payment(paymentData);
+        await payment.save();
+
+        // Also store in memory for quick access
+        this.userSessions.set(paymentData.userId, {
+          orderNumber: payment.orderNumber,
+          amount: payment.amount,
+          currency: payment.currency,
+          status: payment.status,
+          checkoutUrl: payment.checkoutUrl,
+          productId: payment.productId,
+          productName: payment.productName,
+          createdAt: payment.createdAt,
+          _id: payment._id,
+        });
+
+        console.log(`Payment session created: ${payment.orderNumber}`);
+        return payment;
+      } catch (error) {
+        console.error("Error creating payment session:", error);
+        throw error;
+      }
+    },
+
+    async updatePaymentStatus(
+      orderNumber,
+      status,
+      transactionId = null,
+      paymentId = null
+    ) {
+      try {
+        const payment = await Payment.updatePaymentStatus(
+          orderNumber,
+          status,
+          transactionId,
+          paymentId
+        );
+
+        if (payment) {
+          // Update in-memory session
+          for (const [userId, session] of this.userSessions.entries()) {
+            if (session.orderNumber === orderNumber) {
+              session.status = status;
+              if (transactionId) session.transactionId = transactionId;
+              if (paymentId) session.paymentId = paymentId;
+              session.updatedAt = new Date();
+              break;
+            }
+          }
+        }
+
+        return payment;
+      } catch (error) {
+        console.error("Error updating payment status:", error);
+        throw error;
+      }
+    },
+
+    async getPaymentByOrderNumber(orderNumber) {
+      try {
+        return await Payment.findByOrderNumber(orderNumber);
+      } catch (error) {
+        console.error("Error getting payment by order number:", error);
+        return null;
+      }
+    },
+
+    async getUserPayments(userId) {
+      try {
+        return await Payment.findByUserId(userId);
+      } catch (error) {
+        console.error("Error getting user payments:", error);
+        return [];
+      }
+    },
+
+    async getActiveUserPayment(userId) {
+      try {
+        return await Payment.findActiveByUserId(userId);
+      } catch (error) {
+        console.error("Error getting active user payment:", error);
+        return null;
+      }
+    },
+
+    async getPaymentStats() {
+      try {
+        return await Payment.getPaymentStats();
+      } catch (error) {
+        console.error("Error getting payment stats:", error);
+        return [];
+      }
+    },
   };
 }
 
@@ -178,9 +417,9 @@ export function isValidUserId(userId) {
 
 export function formatProductMessage(product) {
   return (
-    `🆔 **ID:** ${product.id}\n` +
-    `📝 **Name:** ${product.name}\n` +
-    `💰 **Price:** ${product.price} ${product.currency}\n` +
+    `🆔 **ID:** ${product._id}\n` +
+    `📝 **Name:** ${product.title}\n` +
+    `💰 **Price:** ${product.amount} ${product.currency}\n` +
     `📄 **Description:** ${product.description}`
   );
 }
@@ -209,12 +448,13 @@ export function formatAdminProductListMessage(products) {
   let message = "📦 **All Products (Admin View):**\n\n";
   products.forEach((product) => {
     message +=
-      `🆔 **ID:** ${product.id}\n` +
-      `📝 **Name:** ${product.name}\n` +
-      `💰 **Price:** ${product.price} ${product.currency}\n` +
+      `🆔 **ID:** ${product._id}\n` +
+      `📝 **Name:** ${product.title}\n` +
+      `💰 **Price:** ${product.amount} ${product.currency}\n` +
       `📄 **Description:** ${product.description}\n` +
       `👤 **Created By:** ${product.createdBy}\n` +
-      `📅 **Created:** ${product.createdAt.toLocaleString()}\n\n`;
+      `📅 **Created:** ${product.createdAt.toLocaleString()}\n` +
+      `🔄 **Status:** ${product.isActive ? "Active" : "Inactive"}\n\n`;
   });
 
   return message;

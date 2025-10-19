@@ -125,7 +125,7 @@ export function handleAddressCollection(
 // PRODUCT CREATION HANDLER
 // ============================================================================
 
-export function handleProductCreation(
+export async function handleProductCreation(
   ctx,
   userId,
   text,
@@ -134,88 +134,95 @@ export function handleProductCreation(
 ) {
   const { step } = productData;
 
-  switch (step) {
-    case PRODUCT_STEPS.NAME:
-      if (!text || text.trim().length < 2) {
-        return ctx.reply(
-          "❌ Product name must be at least 2 characters long.\n\nPlease enter the product name:"
+  try {
+    switch (step) {
+      case PRODUCT_STEPS.NAME:
+        if (!text || text.trim().length < 2) {
+          return ctx.reply(
+            "❌ Product name must be at least 2 characters long.\n\nPlease enter the product name:"
+          );
+        }
+        productData.productData.name = text.trim();
+        productData.step = PRODUCT_STEPS.DESCRIPTION;
+        ctx.reply(
+          `✅ Name: ${productData.productData.name}\n\n` +
+            `**Step 2/4: Description**\n` +
+            `Please enter the product description:`
         );
-      }
-      productData.productData.name = text.trim();
-      productData.step = PRODUCT_STEPS.DESCRIPTION;
-      ctx.reply(
-        `✅ Name: ${productData.productData.name}\n\n` +
-          `**Step 2/4: Description**\n` +
-          `Please enter the product description:`
-      );
-      break;
+        break;
 
-    case PRODUCT_STEPS.DESCRIPTION:
-      if (!text || text.trim().length < 5) {
-        return ctx.reply(
-          "❌ Description must be at least 5 characters long.\n\nPlease enter the product description:"
+      case PRODUCT_STEPS.DESCRIPTION:
+        if (!text || text.trim().length < 5) {
+          return ctx.reply(
+            "❌ Description must be at least 5 characters long.\n\nPlease enter the product description:"
+          );
+        }
+        productData.productData.description = text.trim();
+        productData.step = PRODUCT_STEPS.PRICE;
+        ctx.reply(
+          `✅ Description: ${productData.productData.description}\n\n` +
+            `**Step 3/4: Price**\n` +
+            `Please enter the product price (e.g., 99.99):`
         );
-      }
-      productData.productData.description = text.trim();
-      productData.step = PRODUCT_STEPS.PRICE;
-      ctx.reply(
-        `✅ Description: ${productData.productData.description}\n\n` +
-          `**Step 3/4: Price**\n` +
-          `Please enter the product price (e.g., 99.99):`
-      );
-      break;
+        break;
 
-    case PRODUCT_STEPS.PRICE:
-      if (!validateAmount(text)) {
-        return ctx.reply(
-          "❌ Invalid price. Please enter a valid number between 1 and 1,000,000.\n\nPlease enter the product price:"
+      case PRODUCT_STEPS.PRICE:
+        if (!validateAmount(text)) {
+          return ctx.reply(
+            "❌ Invalid price. Please enter a valid number between 1 and 1,000,000.\n\nPlease enter the product price:"
+          );
+        }
+        productData.productData.price = parseFloat(text);
+        productData.step = PRODUCT_STEPS.CURRENCY;
+        ctx.reply(
+          `✅ Price: ${productData.productData.price}\n\n` +
+            `**Step 4/4: Currency**\n` +
+            `Please enter the currency (USD, EUR, GBP, INR):`
         );
-      }
-      productData.productData.price = parseFloat(text);
-      productData.step = PRODUCT_STEPS.CURRENCY;
-      ctx.reply(
-        `✅ Price: ${productData.productData.price}\n\n` +
-          `**Step 4/4: Currency**\n` +
-          `Please enter the currency (USD, EUR, GBP, INR):`
-      );
-      break;
+        break;
 
-    case PRODUCT_STEPS.CURRENCY:
-      if (!validateCurrency(text)) {
-        return ctx.reply(
-          "❌ Unsupported currency. Supported: USD, EUR, GBP, INR\n\nPlease enter the currency:"
+      case PRODUCT_STEPS.CURRENCY:
+        if (!validateCurrency(text)) {
+          return ctx.reply(
+            "❌ Unsupported currency. Supported: USD, EUR, GBP, INR\n\nPlease enter the currency:"
+          );
+        }
+        productData.productData.currency = text.toUpperCase();
+
+        // Product creation complete
+        const productId = await productManager.createProduct(
+          productData.productData.name,
+          productData.productData.description,
+          productData.productData.price,
+          productData.productData.currency,
+          userId
         );
-      }
-      productData.productData.currency = text.toUpperCase();
 
-      // Product creation complete
-      const productId = productManager.createProduct(
-        productData.productData.name,
-        productData.productData.description,
-        productData.productData.price,
-        productData.productData.currency,
-        userId
-      );
+        console.log(`Product created by user ${userId}:`, {
+          id: productId,
+          ...productData.productData,
+        });
 
-      console.log(`Product created by user ${userId}:`, {
-        id: productId,
-        ...productData.productData,
-      });
+        // Clear product creation data
+        ctx.dataStorage.userProductSelection.delete(userId);
 
-      // Clear product creation data
-      ctx.dataStorage.userProductSelection.delete(userId);
+        ctx.reply(
+          `✅ **Product Created Successfully!**\n\n` +
+            `🆔 **ID:** ${productId}\n` +
+            `📝 **Name:** ${productData.productData.name}\n` +
+            `💰 **Price:** ${productData.productData.price} ${productData.productData.currency}\n` +
+            `📄 **Description:** ${productData.productData.description}\n\n` +
+            `Users can now buy this product using: /buy ${productId}`
+        );
+        break;
 
-      ctx.reply(
-        `✅ **Product Created Successfully!**\n\n` +
-          `🆔 **ID:** ${productId}\n` +
-          `📝 **Name:** ${productData.productData.name}\n` +
-          `💰 **Price:** ${productData.productData.price} ${productData.productData.currency}\n` +
-          `📄 **Description:** ${productData.productData.description}\n\n` +
-          `Users can now buy this product using: /buy ${productId}`
-      );
-      break;
-
-    default:
-      ctx.reply("❌ Invalid step. Please start over with /addproduct command.");
+      default:
+        ctx.reply(
+          "❌ Invalid step. Please start over with /addproduct command."
+        );
+    }
+  } catch (error) {
+    console.error("Error in product creation:", error);
+    ctx.reply("❌ Failed to create product. Please try again later.");
   }
 }
