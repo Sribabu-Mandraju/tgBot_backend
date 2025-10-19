@@ -273,7 +273,7 @@ export async function handleProductModification(
                 updatedProduct.updatedAt
               ).toLocaleString()}`
           );
-          break;
+          break;  
         }
 
         if (
