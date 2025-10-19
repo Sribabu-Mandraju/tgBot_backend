@@ -443,132 +443,6 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
         );
       }
 
-      // If we have order_id, process it directly
-      if (order_id) {
-        console.log(`Processing success callback for order: ${order_id}`);
-
-        // Update payment status in database
-        const updatedPayment = await dataStorage.updatePaymentStatus(
-          order_id,
-          "completed",
-          trans_id,
-          payment_id
-        );
-
-        if (updatedPayment) {
-          console.log(
-            `Payment completed for user ${updatedPayment.userId}, order: ${order_id}`
-          );
-
-          // Send notification to user
-          try {
-            const statusMessage = getPaymentStatusMessage(
-              updatedPayment,
-              "completed"
-            );
-            bot.telegram.sendMessage(updatedPayment.userId, statusMessage);
-            console.log(`Notification sent to user ${updatedPayment.userId}`);
-          } catch (notifyError) {
-            console.error("Failed to send notification:", notifyError);
-          }
-        } else {
-          console.log(`No payment found for order: ${order_id}`);
-        }
-      }
-      // If we have user_id but no order_id, find their most recent pending payment
-      else if (user_id) {
-        console.log(`Processing success callback for user: ${user_id}`);
-
-        try {
-          const recentPayment = await Payment.findOne({
-            userId: user_id,
-            status: "pending",
-          }).sort({ createdAt: -1 });
-
-          if (recentPayment) {
-            console.log(
-              `Found recent pending session for user ${recentPayment.userId}:`,
-              recentPayment
-            );
-
-            // Update the most recent session to completed
-            await dataStorage.updatePaymentStatus(
-              recentPayment.orderNumber,
-              "completed",
-              trans_id,
-              payment_id
-            );
-
-            console.log(
-              `Updated most recent session to completed for user ${recentPayment.userId}`
-            );
-
-            // Send notification to user
-            try {
-              const statusMessage = getPaymentStatusMessage(
-                recentPayment,
-                "completed"
-              );
-              bot.telegram.sendMessage(recentPayment.userId, statusMessage);
-              console.log(`Notification sent to user ${recentPayment.userId}`);
-            } catch (notifyError) {
-              console.error("Failed to send notification:", notifyError);
-            }
-          } else {
-            console.log(`No pending payments found for user: ${user_id}`);
-          }
-        } catch (error) {
-          console.error("Error finding recent payment for user:", error);
-        }
-      }
-      // If no specific parameters, try to find the most recent pending payment
-      else {
-        console.log(
-          "No callback parameters received, checking for active sessions..."
-        );
-
-        try {
-          const recentPayment = await Payment.findOne({
-            status: "pending",
-          }).sort({ createdAt: -1 });
-
-          if (recentPayment) {
-            console.log(
-              `Found recent pending session for user ${recentPayment.userId}:`,
-              recentPayment
-            );
-
-            // Update the most recent session to completed
-            await dataStorage.updatePaymentStatus(
-              recentPayment.orderNumber,
-              "completed",
-              trans_id,
-              payment_id
-            );
-
-            console.log(
-              `Updated most recent session to completed for user ${recentPayment.userId}`
-            );
-
-            // Send notification to user
-            try {
-              const statusMessage = getPaymentStatusMessage(
-                recentPayment,
-                "completed"
-              );
-              bot.telegram.sendMessage(recentPayment.userId, statusMessage);
-              console.log(`Notification sent to user ${recentPayment.userId}`);
-            } catch (notifyError) {
-              console.error("Failed to send notification:", notifyError);
-            }
-          } else {
-            console.log("No pending payments found to update");
-          }
-        } catch (error) {
-          console.error("Error finding recent payment:", error);
-        }
-      }
-
       res.send(`
         <!DOCTYPE html>
         <html>
@@ -604,85 +478,61 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
     try {
       console.log("Payment cancel callback received:", req.query);
 
-      const { payment_id, trans_id, order_id, hash, user_id } = req.query;
+      // Use the comprehensive user identification helper
+      const userInfo = await identifyUserFromCallback(req.query);
 
-      // If we have order_id, process it directly
-      if (order_id) {
-        console.log(`Processing cancel callback for order: ${order_id}`);
+      if (!userInfo) {
+        console.log("❌ Could not identify user from callback parameters");
+        return res.send(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Payment Status</title>
+            <style>
+              body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+              .error { color: #dc3545; font-size: 24px; }
+              .message { margin: 20px 0; }
+            </style>
+          </head>
+          <body>
+            <div class="error">⚠️ Payment Status Unknown</div>
+            <div class="message">We couldn't identify your payment. Please contact support.</div>
+          </body>
+          </html>
+        `);
+      }
 
-        // Update payment status to cancelled in database
-        const updatedPayment = await dataStorage.updatePaymentStatus(
-          order_id,
-          "cancelled",
-          trans_id,
-          payment_id
+      const { userId, payment, method } = userInfo;
+      console.log(`🎯 Identified user ${userId} using method: ${method}`);
+
+      // Update payment status to cancelled
+      const updatedPayment = await dataStorage.updatePaymentStatus(
+        payment.orderNumber,
+        "cancelled",
+        req.query.trans_id,
+        req.query.payment_id
+      );
+
+      if (updatedPayment) {
+        console.log(
+          `✅ Payment cancelled for user ${userId}, order: ${payment.orderNumber}`
         );
 
-        if (updatedPayment) {
-          console.log(
-            `Payment cancelled for user ${updatedPayment.userId}, order: ${order_id}`
-          );
-
-          // Send notification to user
-          try {
-            const statusMessage = getPaymentStatusMessage(
-              updatedPayment,
-              "cancelled"
-            );
-            bot.telegram.sendMessage(updatedPayment.userId, statusMessage);
-            console.log(`Notification sent to user ${updatedPayment.userId}`);
-          } catch (notifyError) {
-            console.error("Failed to send notification:", notifyError);
-          }
-        } else {
-          console.log(`No payment found for order: ${order_id}`);
-        }
-      }
-      // If we have user_id but no order_id, find their most recent pending payment
-      else if (user_id) {
-        console.log(`Processing cancel callback for user: ${user_id}`);
-
+        // Send notification to user
         try {
-          const recentPayment = await Payment.findOne({
-            userId: user_id,
-            status: "pending",
-          }).sort({ createdAt: -1 });
-
-          if (recentPayment) {
-            console.log(
-              `Found recent pending session for user ${recentPayment.userId}:`,
-              recentPayment
-            );
-
-            // Update the most recent session to cancelled
-            await dataStorage.updatePaymentStatus(
-              recentPayment.orderNumber,
-              "cancelled",
-              trans_id,
-              payment_id
-            );
-
-            console.log(
-              `Updated most recent session to cancelled for user ${recentPayment.userId}`
-            );
-
-            // Send notification to user
-            try {
-              const statusMessage = getPaymentStatusMessage(
-                recentPayment,
-                "cancelled"
-              );
-              bot.telegram.sendMessage(recentPayment.userId, statusMessage);
-              console.log(`Notification sent to user ${recentPayment.userId}`);
-            } catch (notifyError) {
-              console.error("Failed to send notification:", notifyError);
-            }
-          } else {
-            console.log(`No pending payments found for user: ${user_id}`);
-          }
-        } catch (error) {
-          console.error("Error finding recent payment for user:", error);
+          const statusMessage = getPaymentStatusMessage(
+            updatedPayment,
+            "cancelled"
+          );
+          bot.telegram.sendMessage(userId, statusMessage);
+          console.log(`📱 Notification sent to user ${userId}`);
+        } catch (notifyError) {
+          console.error("Failed to send notification:", notifyError);
         }
+      } else {
+        console.log(
+          `❌ Failed to update payment status for order: ${payment.orderNumber}`
+        );
       }
 
       res.send(`
