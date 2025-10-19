@@ -460,8 +460,9 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
           <div class="message">Thank you for your payment. You can close this window and return to Telegram.</div>
           <div class="debug">
             Debug Info:<br>
-            Order ID: ${order_id || "Not provided"}<br>
-            Payment ID: ${payment_id || "Not provided"}<br>
+            User ID: ${userId || "Not provided"}<br>
+            Order Number: ${payment?.orderNumber || "Not provided"}<br>
+            Method: ${method || "Not provided"}<br>
             Timestamp: ${new Date().toISOString()}
           </div>
         </body>
