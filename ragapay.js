@@ -50,8 +50,6 @@ export function generateSignature(payload) {
       ""
     );
 
-    
-
     // According to official docs: sha1(md5(strtoupper(order.number + order.amount + order.currency + order.description + PASSWORD)))
     const to_md5 =
       sanitizedOrderNumber +
@@ -632,6 +630,7 @@ export async function createPaymentSession(
         telegram_chat_id: ctx.chat.id,
         product_id: productId || null,
         order_number: orderNumber,
+        payment_methods: PAYMENT_METHODS.SUPPORTED_METHODS.join(","),
       },
       hash: "",
     };
@@ -717,9 +716,13 @@ export async function createPaymentSession(
       `📞 ${address.phone}\n\n` +
       `💳 **Payment Methods Available:**\n` +
       `• Credit/Debit Cards\n` +
-      `• Apple Pay\n\n` +
+      `• Apple Pay (iOS Safari/Chrome)\n\n` +
       `🔗 **Click the link below to complete your payment:**\n` +
       `${checkoutUrl}\n\n` +
+      `📱 **For Apple Pay:**\n` +
+      `• Open link in Safari or Chrome on iOS\n` +
+      `• Apple Pay button will appear automatically\n` +
+      `• Use Touch ID/Face ID to complete payment\n\n` +
       `Use /status to check your payment status.`;
 
     ctx.reply(message);

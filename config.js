@@ -70,6 +70,12 @@ export const PAYMENT_METHODS = {
   GOOGLE_PAY: "googlepay",
   PAYPAL: "paypal",
   SUPPORTED_METHODS: ["card", "applepay"],
+  APPLE_PAY_CONFIG: {
+    ENABLED: true,
+    REQUIRES_HTTPS: true,
+    SUPPORTED_BROWSERS: ["Safari", "Chrome"],
+    SUPPORTED_DEVICES: ["iOS", "macOS"],
+  },
 };
 
 // Address Collection Steps
