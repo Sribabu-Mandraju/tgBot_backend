@@ -27,6 +27,7 @@ import {
   handleStartCommand,
   handleHelpCommand,
   handleProductsCommand,
+  handleModifyProductCommand,
   handleBuyCommand,
   handlePayCommand,
   handleStatusCommand,

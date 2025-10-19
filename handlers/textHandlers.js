@@ -213,7 +213,7 @@ export async function handleProductCreation(
             `📝 **Name:** ${productData.productData.name}\n` +
             `💰 **Price:** ${productData.productData.price} ${productData.productData.currency}\n` +
             `📄 **Description:** ${productData.productData.description}\n\n` +
-            `Users can now buy this product using: /buy ${productId}`
+            `Users can now buy this product using: /buy "${productData.productData.name}"`
         );
         break;
 
