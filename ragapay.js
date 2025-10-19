@@ -486,8 +486,8 @@ export async function createPaymentSession(
         currency: currency,
         description: description,
       },
-      cancel_url: `${SERVER_CONFIG.BASE_URL}/payment/cancel`,
-      success_url: `${SERVER_CONFIG.BASE_URL}/payment/success`,
+      cancel_url: `${SERVER_CONFIG.BASE_URL}/payment/cancel?user_id=${userId}`,
+      success_url: `${SERVER_CONFIG.BASE_URL}/payment/success?user_id=${userId}`,
       webhook_url: `${SERVER_CONFIG.BASE_URL}/callback/ragapay`,
       customer: {
         name: ctx.from.first_name || "Telegram User",
@@ -505,6 +505,7 @@ export async function createPaymentSession(
         telegram_user_id: userId,
         telegram_chat_id: ctx.chat.id,
         product_id: productId || null,
+        order_number: orderNumber,
       },
       hash: "",
     };

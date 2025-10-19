@@ -119,9 +119,9 @@ paymentSchema.statics.findByUserId = function (userId) {
 };
 
 paymentSchema.statics.findActiveByUserId = function (userId) {
-  return this.findOne({ 
-    userId: userId.toString(), 
-    status: { $in: ["pending", "completed"] } 
+  return this.findOne({
+    userId: userId.toString(),
+    status: { $in: ["pending", "completed"] },
   }).sort({ createdAt: -1 });
 };
 
@@ -129,29 +129,30 @@ paymentSchema.statics.findByOrderNumber = function (orderNumber) {
   return this.findOne({ orderNumber });
 };
 
-paymentSchema.statics.updatePaymentStatus = function (orderNumber, status, transactionId = null, paymentId = null) {
-  const updateData = { 
-    status, 
-    updatedAt: Date.now() 
+paymentSchema.statics.updatePaymentStatus = function (
+  orderNumber,
+  status,
+  transactionId = null,
+  paymentId = null
+) {
+  const updateData = {
+    status,
+    updatedAt: Date.now(),
   };
-  
+
   if (transactionId) {
     updateData.transactionId = transactionId;
   }
-  
+
   if (paymentId) {
     updateData.paymentId = paymentId;
   }
-  
+
   if (status === "completed") {
     updateData.completedAt = Date.now();
   }
-  
-  return this.findOneAndUpdate(
-    { orderNumber },
-    updateData,
-    { new: true }
-  );
+
+  return this.findOneAndUpdate({ orderNumber }, updateData, { new: true });
 };
 
 paymentSchema.statics.getPaymentStats = function () {
@@ -160,9 +161,9 @@ paymentSchema.statics.getPaymentStats = function () {
       $group: {
         _id: "$status",
         count: { $sum: 1 },
-        totalAmount: { $sum: "$amount" }
-      }
-    }
+        totalAmount: { $sum: "$amount" },
+      },
+    },
   ]);
 };
 
@@ -173,7 +174,21 @@ paymentSchema.statics.getUserPaymentHistory = function (userId, limit = 10) {
     .limit(limit);
 };
 
+paymentSchema.statics.findPaymentByPaymentId = function (paymentId) {
+  return this.findOne({ paymentId: paymentId });
+};
+
+paymentSchema.statics.findPaymentByTransactionId = function (transactionId) {
+  return this.findOne({ transactionId: transactionId });
+};
+
+paymentSchema.statics.findActivePaymentByUser = function (userId) {
+  return this.findOne({
+    userId: userId.toString(),
+    status: { $in: ["pending", "processing"] },
+  }).sort({ createdAt: -1 });
+};
+
 const Payment = mongoose.model("Payment", paymentSchema);
 
 export default Payment;
-
