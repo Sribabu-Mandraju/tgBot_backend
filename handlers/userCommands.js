@@ -31,7 +31,8 @@ export async function handleProductsCommand(ctx, productManager) {
 export async function handleModifyProductCommand(
   ctx,
   productManager,
-  dataStorage
+  dataStorage,
+  adminManager
 ) {
   const userId = ctx.from.id;
   const args = ctx.message.text.split(" ").slice(1);
@@ -57,6 +58,21 @@ export async function handleModifyProductCommand(
         `❌ Product "${productName}" not found.\n\n` +
           `Use /products to see available products.\n` +
           `Note: Product names are case-sensitive.`
+      );
+    }
+
+    // Check if user can modify this product
+    const isMasterAdmin = await adminManager.isMasterAdmin(userId);
+    const isProductCreator = product.createdBy === userId.toString();
+
+    if (!isMasterAdmin && !isProductCreator) {
+      return ctx.reply(
+        `❌ **Access Denied**\n\n` +
+          `You can only modify products you created or be a master admin.\n\n` +
+          `📝 **Product Creator:** ${product.createdBy}\n` +
+          `🆔 **Your ID:** ${userId}\n` +
+          `👑 **Master Admin:** ${isMasterAdmin ? "Yes" : "No"}\n\n` +
+          `Contact the master admin if you need to modify this product.`
       );
     }
 

@@ -161,7 +161,7 @@ function setupBotHandlers(bot, adminManager, productManager, dataStorage) {
   bot.help((ctx) => handleHelpCommand(ctx, adminManager));
   bot.command("products", (ctx) => handleProductsCommand(ctx, productManager));
   bot.command("modifyproduct", (ctx) =>
-    handleModifyProductCommand(ctx, productManager, dataStorage)
+    handleModifyProductCommand(ctx, productManager, dataStorage, adminManager)
   );
   bot.command("buy", (ctx) =>
     handleBuyCommand(ctx, productManager, dataStorage)
