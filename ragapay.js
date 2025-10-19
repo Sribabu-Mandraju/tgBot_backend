@@ -467,11 +467,10 @@ export async function createPaymentSession(
       ZW: "ZW",
     };
 
-    // Convert country name to 2-character code (if address provided)
-    const countryCode = address.country
-      ? countryCodeMap[address.country.toUpperCase()] ||
-        address.country.toUpperCase().substring(0, 2)
-      : "US"; // Default to US if no address provided
+    // Convert country name to 2-character code
+    const countryCode =
+      countryCodeMap[address.country.toUpperCase()] ||
+      address.country.toUpperCase().substring(0, 2);
 
     // Create payment session
     const orderNumber = `TG_${userId}_${Date.now()}`;
@@ -502,23 +501,14 @@ export async function createPaymentSession(
         name: ctx.from.first_name || "Telegram User",
         email: `user${userId}@telegram.com`,
       },
-      billing_address: address.country
-        ? {
-            country: countryCode,
-            state: address.state,
-            city: address.city,
-            address: address.address,
-            zip: address.zip,
-            phone: address.phone,
-          }
-        : {
-            country: countryCode,
-            state: "",
-            city: "",
-            address: "",
-            zip: "",
-            phone: "",
-          },
+      billing_address: {
+        country: countryCode,
+        state: address.state,
+        city: address.city,
+        address: address.address,
+        zip: address.zip,
+        phone: address.phone,
+      },
       parameters: {
         telegram_user_id: userId,
         telegram_chat_id: ctx.chat.id,
@@ -579,16 +569,14 @@ export async function createPaymentSession(
       productName: productName || null,
       productDescription: productDescription || null,
       description: description || null,
-      billingAddress: address.country
-        ? {
-            country: address.country,
-            state: address.state,
-            city: address.city,
-            address: address.address,
-            zip: address.zip,
-            phone: address.phone,
-          }
-        : null, // No address collected - RagaPay will collect it
+      billingAddress: {
+        country: address.country,
+        state: address.state,
+        city: address.city,
+        address: address.address,
+        zip: address.zip,
+        phone: address.phone,
+      },
     };
 
     // Store in database
@@ -605,9 +593,12 @@ export async function createPaymentSession(
       `💳 **Payment Session Created!**\n\n` +
       `Amount: ${amount} ${currency}\n` +
       `Order: ${orderNumber}\n\n` +
+      `📍 **Billing Address:**\n` +
+      `${address.address}, ${address.city}\n` +
+      `${address.state} ${address.zip}, ${address.country}\n` +
+      `📞 ${address.phone}\n\n` +
       `🔗 **Click the link below to complete your payment:**\n` +
       `${checkoutUrl}\n\n` +
-      `💡 **Note:** You'll enter your billing address on the secure payment page.\n\n` +
       `Use /status to check your payment status.`;
 
     ctx.reply(message);

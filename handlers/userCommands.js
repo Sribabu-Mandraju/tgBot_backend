@@ -139,27 +139,30 @@ export async function handleBuyCommand(ctx, productManager, dataStorage) {
       );
     }
 
-    // Create payment session directly (RagaPay will collect address)
-    console.log(
-      `Creating payment session for user ${userId}, product: ${product.title}`
-    );
-
-    // Import createPaymentSession function
-    const { createPaymentSession } = await import("../ragapay.js");
-
-    // Create payment data object
-    const paymentData = {
+    // Store product selection and start address collection
+    dataStorage.userAddressCollection.set(userId, {
       amount: product.amount,
       currency: product.currency,
       productId: product._id,
       productName: product.title,
       productDescription: product.description,
-      description: product.description,
-      address: {}, // Empty address - RagaPay will collect it
-    };
+      step: "country",
+      address: {},
+    });
 
-    // Create payment session directly
-    await createPaymentSession(ctx, userId, paymentData, dataStorage);
+    console.log(
+      `Starting address collection for user ${userId}, product: ${product.title}`
+    );
+
+    ctx.reply(
+      `🛒 **Product Selected:**\n\n` +
+        `📝 **Name:** ${product.title}\n` +
+        `💰 **Price:** ${product.amount} ${product.currency}\n` +
+        `📄 **Description:** ${product.description}\n\n` +
+        `📍 **Please provide your billing address:**\n\n` +
+        `**Step 1/6: Country**\n` +
+        `Please enter your country (e.g., US, UK, CA):`
+    );
   } catch (error) {
     console.error("Error processing buy command:", error);
     ctx.reply("❌ Failed to process purchase. Please try again later.");
@@ -203,26 +206,29 @@ export async function handlePayCommand(ctx, dataStorage) {
   const amount = parseFloat(amountStr);
   const currencyUpper = currency.toUpperCase();
 
-  // Create payment session directly (RagaPay will collect address)
+  // Store payment info and start address collection
+  dataStorage.userAddressCollection.set(userId, {
+    amount,
+    currency: currencyUpper,
+    description: description,
+    step: "country",
+    address: {},
+  });
+
   console.log(
-    `Creating direct payment session for user ${userId}, amount: ${amount} ${currencyUpper}${
+    `Starting address collection for user ${userId}, amount: ${amount} ${currencyUpper}${
       description ? `, description: "${description}"` : ""
     }`
   );
 
-  // Import createPaymentSession function
-  const { createPaymentSession } = await import("../ragapay.js");
+  const message =
+    `💳 **Direct Payment:** ${amount} ${currencyUpper}\n` +
+    (description ? `📝 **Description:** ${description}\n` : "") +
+    `\n📍 **Please provide your billing address:**\n\n` +
+    `**Step 1/6: Country**\n` +
+    `Please enter your country (e.g., US, UK, CA):`;
 
-  // Create payment data object
-  const paymentData = {
-    amount,
-    currency: currencyUpper,
-    description: description,
-    address: {}, // Empty address - RagaPay will collect it
-  };
-
-  // Create payment session directly
-  await createPaymentSession(ctx, userId, paymentData, dataStorage);
+  ctx.reply(message);
 }
 
 export async function handleStatusCommand(ctx, dataStorage) {
@@ -361,7 +367,8 @@ export async function handleStartCommand(ctx, adminManager) {
       `Examples: /buy Premium Plan or /pay 100 USD "Service fee"\n\n` +
       `💡 **Payment Process:**\n` +
       `1. Choose product or direct payment\n` +
-      `2. Complete payment on secure checkout page\n\n` +
+      `2. Provide billing address (6 steps)\n` +
+      `3. Complete payment on checkout page\n\n` +
       `📝 **Note:** Product names are case-insensitive!`;
 
     ctx.reply(welcomeMessage);
@@ -419,7 +426,8 @@ export async function handleHelpCommand(ctx, adminManager) {
     helpMessage +=
       `💡 **Payment Process:**\n` +
       `1. Choose product or direct payment\n` +
-      `2. Complete payment on secure checkout page`;
+      `2. Provide billing address (6 steps)\n` +
+      `3. Complete payment on checkout page`;
 
     ctx.reply(helpMessage);
   } catch (error) {
