@@ -603,7 +603,7 @@ export async function createPaymentSession(
     const payload = {
       merchant_key: RAGAPAY_CONFIG.key,
       operation: "purchase",
-      methods: PAYMENT_METHODS.SUPPORTED_METHODS,
+      methods: ["card", "applepay"],
       order: {
         number: orderNumber,
         amount: amount.toFixed(2),
@@ -630,7 +630,6 @@ export async function createPaymentSession(
         telegram_chat_id: ctx.chat.id,
         product_id: productId || null,
         order_number: orderNumber,
-        payment_methods: PAYMENT_METHODS.SUPPORTED_METHODS.join(","),
       },
       hash: "",
     };
@@ -644,12 +643,18 @@ export async function createPaymentSession(
     console.log("Full payload being sent:", JSON.stringify(payload, null, 2));
 
     const response = await axios.post(RAGAPAY_CONFIG.endpoint, payload, {
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "User-Agent": "TelegramBot/1.0",
+      },
       timeout: SECURITY_CONFIG.WEBHOOK_TIMEOUT,
     });
 
+    console.log("Ragapay API Response Status:", response.status);
+    console.log("Ragapay API Response Headers:", response.headers);
     console.log(
-      "Ragapay API Response:",
+      "Ragapay API Response Data:",
       JSON.stringify(response.data, null, 2)
     );
 
@@ -658,20 +663,33 @@ export async function createPaymentSession(
       throw new Error("No response data received from Ragapay");
     }
 
+    // Check for errors in response first
+    if (response.data.error_code || response.data.error_message) {
+      console.error("RagaPay API Error:", response.data);
+      throw new Error(
+        `RagaPay API Error: ${response.data.error_message || "Unknown error"}`
+      );
+    }
+
     // Try different possible field names for checkout URL
     const checkoutUrl =
       response.data.checkout_url ||
       response.data.url ||
       response.data.redirect_url ||
-      response.data.payment_url;
+      response.data.payment_url ||
+      response.data.session_url ||
+      response.data.link;
 
     if (!checkoutUrl) {
       console.error(
         "No checkout URL found in response. Available fields:",
         Object.keys(response.data)
       );
+      console.error("Full response data:", response.data);
       throw new Error("No checkout URL received from Ragapay");
     }
+
+    console.log("Checkout URL generated:", checkoutUrl);
 
     // Create payment session in database
     const paymentSessionData = {
@@ -715,14 +733,14 @@ export async function createPaymentSession(
       `${address.state} ${address.zip}, ${address.country}\n` +
       `📞 ${address.phone}\n\n` +
       `💳 **Payment Methods Available:**\n` +
-      `• Credit/Debit Cards\n` +
-      `• Apple Pay (iOS Safari/Chrome)\n\n` +
+      `• Credit/Debit Cards (All devices)\n` +
+      `• Apple Pay (iPhone/iPad/Mac only)\n\n` +
       `🔗 **Click the link below to complete your payment:**\n` +
       `${checkoutUrl}\n\n` +
-      `📱 **For Apple Pay:**\n` +
-      `• Open link in Safari or Chrome on iOS\n` +
-      `• Apple Pay button will appear automatically\n` +
-      `• Use Touch ID/Face ID to complete payment\n\n` +
+      `📱 **Device-Specific Payment Options:**\n` +
+      `• **iPhone/iPad/Mac**: Apple Pay + Cards\n` +
+      `• **Android/Windows**: Credit/Debit Cards only\n` +
+      `• **Apple Pay**: Touch ID/Face ID authentication\n\n` +
       `Use /status to check your payment status.`;
 
     ctx.reply(message);
