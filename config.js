@@ -49,6 +49,8 @@ export const ADMIN_CONFIG = {
 export const RATE_LIMIT_CONFIG = {
   WINDOW: 60000, // 1 minute
   MAX_REQUESTS: 10,
+  PAYMENT_WINDOW: 300000, // 5 minutes for payment operations
+  MAX_PAYMENT_REQUESTS: 3, // Max 3 payment attempts per 5 minutes
 };
 
 // Validation Constants
@@ -59,6 +61,15 @@ export const VALIDATION_CONFIG = {
   MIN_FIELD_LENGTH: 2,
   MIN_DESCRIPTION_LENGTH: 5,
   PHONE_REGEX: /^[\+]?[1-9][\d]{0,15}$/,
+};
+
+// Payment Methods Configuration
+export const PAYMENT_METHODS = {
+  CARD: "card",
+  APPLE_PAY: "applepay",
+  GOOGLE_PAY: "googlepay",
+  PAYPAL: "paypal",
+  SUPPORTED_METHODS: ["card", "applepay"],
 };
 
 // Address Collection Steps
@@ -118,4 +129,15 @@ export const SUCCESS_MESSAGES = {
   ADMIN_ADDED: "✅ User has been added as an admin.",
   ADMIN_REMOVED: "✅ User has been removed from admins.",
   PAYMENT_CREATED: "💳 Payment Session Created!",
+};
+
+// Security Configuration
+export const SECURITY_CONFIG = {
+  MAX_ORDER_NUMBER_LENGTH: 50,
+  MAX_DESCRIPTION_LENGTH: 1024,
+  MAX_CUSTOMER_NAME_LENGTH: 100,
+  MAX_ADDRESS_FIELD_LENGTH: 100,
+  SIGNATURE_TIMEOUT: 300000, // 5 minutes
+  WEBHOOK_TIMEOUT: 10000, // 10 seconds
+  ALLOWED_ORDER_PREFIXES: ["TG_", "ORDER_", "PAY_"],
 };

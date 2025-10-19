@@ -4,7 +4,13 @@
 
 import axios from "axios";
 import CryptoJS from "crypto-js";
-import { RAGAPAY_CONFIG, SERVER_CONFIG } from "./config.js";
+import {
+  RAGAPAY_CONFIG,
+  SERVER_CONFIG,
+  PAYMENT_METHODS,
+  VALIDATION_CONFIG,
+  SECURITY_CONFIG,
+} from "./config.js";
 
 // ============================================================================
 // SIGNATURE GENERATION
@@ -16,12 +22,40 @@ export function generateSignature(payload) {
       throw new Error("Ragapay password is not configured");
     }
 
+    // Validate required payload fields
+    if (
+      !payload.order ||
+      !payload.order.number ||
+      !payload.order.amount ||
+      !payload.order.currency ||
+      !payload.order.description
+    ) {
+      throw new Error("Invalid payload: missing required order fields");
+    }
+
+    // Sanitize input to prevent injection attacks
+    const sanitizedOrderNumber = String(payload.order.number).replace(
+      /[^a-zA-Z0-9_-]/g,
+      ""
+    );
+    const sanitizedAmount = String(payload.order.amount).replace(
+      /[^0-9.]/g,
+      ""
+    );
+    const sanitizedCurrency = String(payload.order.currency)
+      .replace(/[^a-zA-Z]/g, "")
+      .toUpperCase();
+    const sanitizedDescription = String(payload.order.description).replace(
+      /[^\w\s.,!?-]/g,
+      ""
+    );
+
     // According to official docs: sha1(md5(strtoupper(order.number + order.amount + order.currency + order.description + PASSWORD)))
     const to_md5 =
-      payload.order.number +
-      payload.order.amount +
-      payload.order.currency +
-      payload.order.description +
+      sanitizedOrderNumber +
+      sanitizedAmount +
+      sanitizedCurrency +
+      sanitizedDescription +
       RAGAPAY_CONFIG.password;
 
     console.log("Signature input string:", to_md5);
@@ -60,6 +94,80 @@ export async function createPaymentSession(
       productDescription,
       description,
     } = paymentData;
+
+    // Security validation
+    if (!amount || amount <= 0) {
+      throw new Error("Invalid amount: must be greater than 0");
+    }
+
+    if (
+      !currency ||
+      !VALIDATION_CONFIG.SUPPORTED_CURRENCIES.includes(currency.toUpperCase())
+    ) {
+      throw new Error(
+        `Unsupported currency: ${currency}. Supported: ${VALIDATION_CONFIG.SUPPORTED_CURRENCIES.join(
+          ", "
+        )}`
+      );
+    }
+
+    if (
+      amount < VALIDATION_CONFIG.MIN_AMOUNT ||
+      amount > VALIDATION_CONFIG.MAX_AMOUNT
+    ) {
+      throw new Error(
+        `Amount must be between ${VALIDATION_CONFIG.MIN_AMOUNT} and ${VALIDATION_CONFIG.MAX_AMOUNT}`
+      );
+    }
+
+    if (
+      !address ||
+      !address.country ||
+      !address.state ||
+      !address.city ||
+      !address.address ||
+      !address.zip ||
+      !address.phone
+    ) {
+      throw new Error("Invalid address: all fields are required");
+    }
+
+    // Validate phone number format
+    if (!VALIDATION_CONFIG.PHONE_REGEX.test(address.phone)) {
+      throw new Error("Invalid phone number format");
+    }
+
+    // Additional security validations
+    if (
+      description &&
+      description.length > SECURITY_CONFIG.MAX_DESCRIPTION_LENGTH
+    ) {
+      throw new Error(
+        `Description too long: max ${SECURITY_CONFIG.MAX_DESCRIPTION_LENGTH} characters`
+      );
+    }
+
+    if (
+      productName &&
+      productName.length > SECURITY_CONFIG.MAX_CUSTOMER_NAME_LENGTH
+    ) {
+      throw new Error(
+        `Product name too long: max ${SECURITY_CONFIG.MAX_CUSTOMER_NAME_LENGTH} characters`
+      );
+    }
+
+    // Validate address field lengths
+    const addressFields = ["state", "city", "address", "zip"];
+    for (const field of addressFields) {
+      if (
+        address[field] &&
+        address[field].length > SECURITY_CONFIG.MAX_ADDRESS_FIELD_LENGTH
+      ) {
+        throw new Error(
+          `${field} too long: max ${SECURITY_CONFIG.MAX_ADDRESS_FIELD_LENGTH} characters`
+        );
+      }
+    }
 
     // Country code mapping for Ragapay (requires 2-character codes)
     const countryCodeMap = {
@@ -472,8 +580,16 @@ export async function createPaymentSession(
       countryCodeMap[address.country.toUpperCase()] ||
       address.country.toUpperCase().substring(0, 2);
 
-    // Create payment session
+    // Create payment session with security validation
     const orderNumber = `TG_${userId}_${Date.now()}`;
+
+    // Validate order number length
+    if (orderNumber.length > SECURITY_CONFIG.MAX_ORDER_NUMBER_LENGTH) {
+      throw new Error(
+        `Order number too long: max ${SECURITY_CONFIG.MAX_ORDER_NUMBER_LENGTH} characters`
+      );
+    }
+
     const paymentDescription = productName
       ? productDescription || `Product: ${productName}`
       : description || `Telegram Payment - ${amount} ${currency}`;
@@ -487,7 +603,7 @@ export async function createPaymentSession(
     const payload = {
       merchant_key: RAGAPAY_CONFIG.key,
       operation: "purchase",
-      methods: ["card"],
+      methods: PAYMENT_METHODS.SUPPORTED_METHODS,
       order: {
         number: orderNumber,
         amount: amount.toFixed(2),
@@ -528,7 +644,7 @@ export async function createPaymentSession(
 
     const response = await axios.post(RAGAPAY_CONFIG.endpoint, payload, {
       headers: { "Content-Type": "application/json" },
-      timeout: 10000,
+      timeout: SECURITY_CONFIG.WEBHOOK_TIMEOUT,
     });
 
     console.log(
@@ -597,6 +713,9 @@ export async function createPaymentSession(
       `${address.address}, ${address.city}\n` +
       `${address.state} ${address.zip}, ${address.country}\n` +
       `📞 ${address.phone}\n\n` +
+      `💳 **Payment Methods Available:**\n` +
+      `• Credit/Debit Cards\n` +
+      `• Apple Pay\n\n` +
       `🔗 **Click the link below to complete your payment:**\n` +
       `${checkoutUrl}\n\n` +
       `Use /status to check your payment status.`;
@@ -632,8 +751,39 @@ export async function createPaymentSession(
 
 export function validateWebhookSignature(payload, signature) {
   try {
+    // Validate input parameters
+    if (!payload || !signature) {
+      console.error("Webhook validation: Missing payload or signature");
+      return false;
+    }
+
+    // Validate signature format (should be hex string)
+    if (!/^[a-fA-F0-9]{40}$/.test(signature)) {
+      console.error("Webhook validation: Invalid signature format");
+      return false;
+    }
+
+    // Generate expected signature
     const expectedSignature = generateSignature(payload);
-    return expectedSignature === signature;
+
+    // Use constant-time comparison to prevent timing attacks
+    if (expectedSignature.length !== signature.length) {
+      console.error("Webhook validation: Signature length mismatch");
+      return false;
+    }
+
+    let isValid = true;
+    for (let i = 0; i < expectedSignature.length; i++) {
+      if (expectedSignature[i] !== signature[i]) {
+        isValid = false;
+      }
+    }
+
+    if (!isValid) {
+      console.error("Webhook validation: Signature mismatch");
+    }
+
+    return isValid;
   } catch (error) {
     console.error("Webhook signature validation error:", error);
     return false;

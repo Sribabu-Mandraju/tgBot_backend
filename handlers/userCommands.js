@@ -356,6 +356,9 @@ export async function handleStartCommand(ctx, adminManager) {
       `💡 **Payment Process:**\n` +
       `1. Choose product or direct payment\n` +
       `2. Complete payment on checkout page\n\n` +
+      `💳 **Payment Methods:**\n` +
+      `• Credit/Debit Cards\n` +
+      `• Apple Pay\n\n` +
       `📝 **Note:** Product names are case-insensitive!`;
 
     ctx.reply(welcomeMessage);
@@ -413,7 +416,10 @@ export async function handleHelpCommand(ctx, adminManager) {
     helpMessage +=
       `💡 **Payment Process:**\n` +
       `1. Choose product or direct payment\n` +
-      `2. Complete payment on checkout page`;
+      `2. Complete payment on checkout page\n\n` +
+      `💳 **Supported Payment Methods:**\n` +
+      `• Credit/Debit Cards\n` +
+      `• Apple Pay`;
 
     ctx.reply(helpMessage);
   } catch (error) {
