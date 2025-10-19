@@ -34,21 +34,34 @@ export async function handleDeleteProductCommand(ctx, productManager) {
   const userId = ctx.from.id;
   const args = ctx.message.text.split(" ").slice(1);
 
-  if (args.length !== 1) {
-    return ctx.reply("❌ Invalid format. Use: /deleteproduct <product_id>");
+  if (args.length === 0) {
+    return ctx.reply(
+      '❌ Invalid format. Use: /deleteproduct <product_name>\nExample: /deleteproduct "Premium Plan"\n\nUse /listproducts to see available products.'
+    );
   }
 
-  const productId = args[0];
+  // Join all arguments to handle product names with spaces
+  const productName = args.join(" ");
 
   try {
-    const product = await productManager.getProduct(productId);
+    // Find product by name (case-sensitive)
+    const products = await productManager.getAllProducts();
+    const product = products.find((p) => p.title === productName);
+
     if (!product) {
-      return ctx.reply(ERROR_MESSAGES.PRODUCT_NOT_FOUND);
+      return ctx.reply(
+        `❌ Product "${productName}" not found.\n\n` +
+          `Use /listproducts to see available products.\n` +
+          `Note: Product names are case-sensitive.`
+      );
     }
 
-    await productManager.deleteProduct(productId);
+    await productManager.deleteProduct(product._id);
     ctx.reply(
-      `✅ Product "${product.title}" (ID: ${productId}) has been deleted.`
+      `✅ **Product Deleted Successfully!**\n\n` +
+        `📝 **Name:** ${product.title}\n` +
+        `💰 **Price:** ${product.amount} ${product.currency}\n` +
+        `📄 **Description:** ${product.description}`
     );
   } catch (error) {
     console.error("Error deleting product:", error);

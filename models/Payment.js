@@ -50,6 +50,14 @@ const paymentSchema = new mongoose.Schema({
     type: String,
     default: null,
   },
+  productDescription: {
+    type: String,
+    default: null,
+  },
+  description: {
+    type: String,
+    default: null,
+  },
   transactionId: {
     type: String,
     default: null,

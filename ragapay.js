@@ -51,7 +51,15 @@ export async function createPaymentSession(
   dataStorage
 ) {
   try {
-    const { amount, currency, address, productId, productName } = paymentData;
+    const {
+      amount,
+      currency,
+      address,
+      productId,
+      productName,
+      productDescription,
+      description,
+    } = paymentData;
 
     // Country code mapping for Ragapay (requires 2-character codes)
     const countryCodeMap = {
@@ -466,9 +474,9 @@ export async function createPaymentSession(
 
     // Create payment session
     const orderNumber = `TG_${userId}_${Date.now()}`;
-    const description = productName
-      ? `Product: ${productName}`
-      : `Telegram Payment - ${amount} ${currency}`;
+    const paymentDescription = productName
+      ? productDescription || `Product: ${productName}`
+      : description || `Telegram Payment - ${amount} ${currency}`;
 
     console.log(`Ragapay config check:`, {
       key: RAGAPAY_CONFIG.key ? "present" : "missing",
@@ -484,7 +492,7 @@ export async function createPaymentSession(
         number: orderNumber,
         amount: amount.toFixed(2),
         currency: currency,
-        description: description,
+        description: paymentDescription,
       },
       cancel_url: `${SERVER_CONFIG.BASE_URL}/payment/cancel?user_id=${userId}`,
       success_url: `${SERVER_CONFIG.BASE_URL}/payment/success?user_id=${userId}`,
@@ -559,6 +567,8 @@ export async function createPaymentSession(
       checkoutUrl: checkoutUrl,
       productId: productId || null,
       productName: productName || null,
+      productDescription: productDescription || null,
+      description: description || null,
       billingAddress: {
         country: address.country,
         state: address.state,
