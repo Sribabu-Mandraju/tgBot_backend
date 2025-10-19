@@ -50,6 +50,8 @@ export function generateSignature(payload) {
       ""
     );
 
+    
+
     // According to official docs: sha1(md5(strtoupper(order.number + order.amount + order.currency + order.description + PASSWORD)))
     const to_md5 =
       sanitizedOrderNumber +
