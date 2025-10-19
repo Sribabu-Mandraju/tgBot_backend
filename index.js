@@ -257,7 +257,7 @@ bot.on("text", (ctx) => {
     adminManager.isAdmin(userId)
   ) {
     const productData = dataStorage.userProductSelection.get(userId);
-    handleProductCreation(ctx, userId, text, productData);
+    handleProductCreation(ctx, userId, text, productData, productManager);
     return;
   }
 

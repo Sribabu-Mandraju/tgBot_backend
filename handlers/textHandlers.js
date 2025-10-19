@@ -125,7 +125,13 @@ export function handleAddressCollection(
 // PRODUCT CREATION HANDLER
 // ============================================================================
 
-export function handleProductCreation(ctx, userId, text, productData) {
+export function handleProductCreation(
+  ctx,
+  userId,
+  text,
+  productData,
+  productManager
+) {
   const { step } = productData;
 
   switch (step) {
@@ -183,7 +189,7 @@ export function handleProductCreation(ctx, userId, text, productData) {
       productData.productData.currency = text.toUpperCase();
 
       // Product creation complete
-      const productId = ctx.productManager.createProduct(
+      const productId = productManager.createProduct(
         productData.productData.name,
         productData.productData.description,
         productData.productData.price,
