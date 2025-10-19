@@ -71,6 +71,16 @@ export const ADDRESS_STEPS = {
   PHONE: "phone",
 };
 
+// Default Address Configuration
+export const DEFAULT_ADDRESS = {
+  country: "US",
+  state: "CA",
+  city: "Cupertino",
+  address: "1 Infinite Loop",
+  zip: "95014",
+  phone: "+19035310488",
+};
+
 // Product Creation Steps
 export const PRODUCT_STEPS = {
   NAME: "name",

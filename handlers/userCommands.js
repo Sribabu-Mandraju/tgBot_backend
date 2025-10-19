@@ -9,7 +9,7 @@ import {
   formatPaymentStatusMessage,
 } from "../utils.js";
 import { createPaymentSession } from "../ragapay.js";
-import { ERROR_MESSAGES } from "../config.js";
+import { ERROR_MESSAGES, DEFAULT_ADDRESS } from "../config.js";
 
 // ============================================================================
 // PRODUCT COMMANDS
@@ -139,30 +139,24 @@ export async function handleBuyCommand(ctx, productManager, dataStorage) {
       );
     }
 
-    // Store product selection and start address collection
-    dataStorage.userAddressCollection.set(userId, {
+    // Create payment session directly with default address
+    console.log(
+      `Creating payment session for user ${userId}, product: ${product.title}`
+    );
+
+    // Create payment data object with default address
+    const paymentData = {
       amount: product.amount,
       currency: product.currency,
       productId: product._id,
       productName: product.title,
       productDescription: product.description,
-      step: "country",
-      address: {},
-    });
+      description: product.description,
+      address: DEFAULT_ADDRESS, // Use default address
+    };
 
-    console.log(
-      `Starting address collection for user ${userId}, product: ${product.title}`
-    );
-
-    ctx.reply(
-      `🛒 **Product Selected:**\n\n` +
-        `📝 **Name:** ${product.title}\n` +
-        `💰 **Price:** ${product.amount} ${product.currency}\n` +
-        `📄 **Description:** ${product.description}\n\n` +
-        `📍 **Please provide your billing address:**\n\n` +
-        `**Step 1/6: Country**\n` +
-        `Please enter your country (e.g., US, UK, CA):`
-    );
+    // Create payment session directly
+    await createPaymentSession(ctx, userId, paymentData, dataStorage);
   } catch (error) {
     console.error("Error processing buy command:", error);
     ctx.reply("❌ Failed to process purchase. Please try again later.");
@@ -206,29 +200,23 @@ export async function handlePayCommand(ctx, dataStorage) {
   const amount = parseFloat(amountStr);
   const currencyUpper = currency.toUpperCase();
 
-  // Store payment info and start address collection
-  dataStorage.userAddressCollection.set(userId, {
-    amount,
-    currency: currencyUpper,
-    description: description,
-    step: "country",
-    address: {},
-  });
-
+  // Create payment session directly with default address
   console.log(
-    `Starting address collection for user ${userId}, amount: ${amount} ${currencyUpper}${
+    `Creating direct payment session for user ${userId}, amount: ${amount} ${currencyUpper}${
       description ? `, description: "${description}"` : ""
     }`
   );
 
-  const message =
-    `💳 **Direct Payment:** ${amount} ${currencyUpper}\n` +
-    (description ? `📝 **Description:** ${description}\n` : "") +
-    `\n📍 **Please provide your billing address:**\n\n` +
-    `**Step 1/6: Country**\n` +
-    `Please enter your country (e.g., US, UK, CA):`;
+  // Create payment data object with default address
+  const paymentData = {
+    amount,
+    currency: currencyUpper,
+    description: description,
+    address: DEFAULT_ADDRESS, // Use default address
+  };
 
-  ctx.reply(message);
+  // Create payment session directly
+  await createPaymentSession(ctx, userId, paymentData, dataStorage);
 }
 
 export async function handleStatusCommand(ctx, dataStorage) {
@@ -367,8 +355,7 @@ export async function handleStartCommand(ctx, adminManager) {
       `Examples: /buy Premium Plan or /pay 100 USD "Service fee"\n\n` +
       `💡 **Payment Process:**\n` +
       `1. Choose product or direct payment\n` +
-      `2. Provide billing address (6 steps)\n` +
-      `3. Complete payment on checkout page\n\n` +
+      `2. Complete payment on checkout page\n\n` +
       `📝 **Note:** Product names are case-insensitive!`;
 
     ctx.reply(welcomeMessage);
@@ -426,8 +413,7 @@ export async function handleHelpCommand(ctx, adminManager) {
     helpMessage +=
       `💡 **Payment Process:**\n` +
       `1. Choose product or direct payment\n` +
-      `2. Provide billing address (6 steps)\n` +
-      `3. Complete payment on checkout page`;
+      `2. Complete payment on checkout page`;
 
     ctx.reply(helpMessage);
   } catch (error) {
