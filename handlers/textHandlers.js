@@ -130,7 +130,8 @@ export async function handleProductCreation(
   userId,
   text,
   productData,
-  productManager
+  productManager,
+  dataStorage
 ) {
   const { step } = productData;
 
@@ -204,7 +205,7 @@ export async function handleProductCreation(
         });
 
         // Clear product creation data
-        ctx.dataStorage.userProductSelection.delete(userId);
+        dataStorage.userProductSelection.delete(userId);
 
         ctx.reply(
           `✅ **Product Created Successfully!**\n\n` +

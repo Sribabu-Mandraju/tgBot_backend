@@ -309,7 +309,14 @@ function setupBotHandlers(bot, adminManager, productManager, dataStorage) {
       (await adminManager.isAdmin(userId))
     ) {
       const productData = dataStorage.userProductSelection.get(userId);
-      handleProductCreation(ctx, userId, text, productData, productManager);
+      handleProductCreation(
+        ctx,
+        userId,
+        text,
+        productData,
+        productManager,
+        dataStorage
+      );
       return;
     }
 
