@@ -467,10 +467,11 @@ export async function createPaymentSession(
       ZW: "ZW",
     };
 
-    // Convert country name to 2-character code
-    const countryCode =
-      countryCodeMap[address.country.toUpperCase()] ||
-      address.country.toUpperCase().substring(0, 2);
+    // Convert country name to 2-character code (if address provided)
+    const countryCode = address.country
+      ? countryCodeMap[address.country.toUpperCase()] ||
+        address.country.toUpperCase().substring(0, 2)
+      : "US"; // Default to US if no address provided
 
     // Create payment session
     const orderNumber = `TG_${userId}_${Date.now()}`;
@@ -501,14 +502,23 @@ export async function createPaymentSession(
         name: ctx.from.first_name || "Telegram User",
         email: `user${userId}@telegram.com`,
       },
-      billing_address: {
-        country: countryCode,
-        state: address.state,
-        city: address.city,
-        address: address.address,
-        zip: address.zip,
-        phone: address.phone,
-      },
+      billing_address: address.country
+        ? {
+            country: countryCode,
+            state: address.state,
+            city: address.city,
+            address: address.address,
+            zip: address.zip,
+            phone: address.phone,
+          }
+        : {
+            country: countryCode,
+            state: "",
+            city: "",
+            address: "",
+            zip: "",
+            phone: "",
+          },
       parameters: {
         telegram_user_id: userId,
         telegram_chat_id: ctx.chat.id,
