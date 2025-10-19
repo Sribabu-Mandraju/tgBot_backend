@@ -48,6 +48,7 @@ import {
 import {
   handleAddressCollection,
   handleProductCreation,
+  handleProductModification,
 } from "./handlers/textHandlers.js";
 
 // Import routes
@@ -159,6 +160,9 @@ function setupBotHandlers(bot, adminManager, productManager, dataStorage) {
   bot.start((ctx) => handleStartCommand(ctx, adminManager));
   bot.help((ctx) => handleHelpCommand(ctx, adminManager));
   bot.command("products", (ctx) => handleProductsCommand(ctx, productManager));
+  bot.command("modifyproduct", (ctx) =>
+    handleModifyProductCommand(ctx, productManager, dataStorage)
+  );
   bot.command("buy", (ctx) =>
     handleBuyCommand(ctx, productManager, dataStorage)
   );
@@ -184,11 +188,13 @@ function setupBotHandlers(bot, adminManager, productManager, dataStorage) {
       message += `• /removeadmin <user_id> - Remove admin\n`;
       message += `• /listadmins - List all admins\n`;
       message += `• /addproduct - Add product\n`;
+      message += `• /modifyproduct <product_name> - Modify product\n`;
       message += `• /deleteproduct <id> - Delete product\n`;
       message += `• /listproducts - List products (admin view)\n`;
     } else if (isAdmin) {
       message += `🎯 **Admin Commands:**\n`;
       message += `• /addproduct - Add product\n`;
+      message += `• /modifyproduct <product_name> - Modify product\n`;
       message += `• /deleteproduct <id> - Delete product\n`;
       message += `• /listproducts - List products (admin view)\n`;
       message += `• /listadmins - List all admins\n`;
@@ -314,6 +320,23 @@ function setupBotHandlers(bot, adminManager, productManager, dataStorage) {
         userId,
         text,
         productData,
+        productManager,
+        dataStorage
+      );
+      return;
+    }
+
+    // Check if user is in product modification mode (admin only)
+    if (
+      dataStorage.userProductModification.has(userId) &&
+      (await adminManager.isAdmin(userId))
+    ) {
+      const modificationData = dataStorage.userProductModification.get(userId);
+      handleProductModification(
+        ctx,
+        userId,
+        text,
+        modificationData,
         productManager,
         dataStorage
       );

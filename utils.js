@@ -199,6 +199,38 @@ export function createProductManager() {
         return [];
       }
     },
+
+    async modifyProduct(productId, updates) {
+      try {
+        const product = await Product.findById(productId);
+        if (!product) {
+          throw new Error("Product not found");
+        }
+
+        // Update only provided fields
+        const updateData = {};
+        if (updates.title) updateData.title = updates.title;
+        if (updates.description) updateData.description = updates.description;
+        if (updates.amount) updateData.amount = parseFloat(updates.amount);
+        if (updates.currency)
+          updateData.currency = updates.currency.toUpperCase();
+
+        // Always update the updatedAt field
+        updateData.updatedAt = Date.now();
+
+        const updatedProduct = await Product.findByIdAndUpdate(
+          productId,
+          updateData,
+          { new: true, runValidators: true }
+        );
+
+        console.log(`Product modified: ${productId}`, updateData);
+        return updatedProduct;
+      } catch (error) {
+        console.error("Error modifying product:", error);
+        throw error;
+      }
+    },
   };
 }
 
@@ -287,6 +319,9 @@ export function createDataStorage() {
 
     // Product creation for ongoing processes
     userProductSelection: new Map(),
+
+    // Product modification for ongoing processes
+    userProductModification: new Map(),
 
     // Payment management functions
     async createPaymentSession(paymentData) {

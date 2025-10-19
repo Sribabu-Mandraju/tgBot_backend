@@ -227,3 +227,172 @@ export async function handleProductCreation(
     ctx.reply("❌ Failed to create product. Please try again later.");
   }
 }
+
+// ============================================================================
+// PRODUCT MODIFICATION HANDLER
+// ============================================================================
+
+export async function handleProductModification(
+  ctx,
+  userId,
+  text,
+  modificationData,
+  productManager,
+  dataStorage
+) {
+  const { step, modifications, productId, productName } = modificationData;
+
+  try {
+    switch (step) {
+      case "field":
+        const fieldChoice = text.toLowerCase().trim();
+
+        if (fieldChoice === "done") {
+          // Apply modifications
+          if (Object.keys(modifications).length === 0) {
+            dataStorage.userProductModification.delete(userId);
+            return ctx.reply(
+              "❌ No modifications made. Product modification cancelled."
+            );
+          }
+
+          const updatedProduct = await productManager.modifyProduct(
+            productId,
+            modifications
+          );
+
+          // Clear modification data
+          dataStorage.userProductModification.delete(userId);
+
+          ctx.reply(
+            `✅ **Product Modified Successfully!**\n\n` +
+              `📝 **Name:** ${updatedProduct.title}\n` +
+              `💰 **Price:** ${updatedProduct.amount} ${updatedProduct.currency}\n` +
+              `📄 **Description:** ${updatedProduct.description}\n\n` +
+              `🕒 **Last Updated:** ${new Date(
+                updatedProduct.updatedAt
+              ).toLocaleString()}`
+          );
+          break;
+        }
+
+        if (
+          !["name", "description", "price", "currency"].includes(fieldChoice)
+        ) {
+          return ctx.reply(
+            "❌ Invalid choice. Please type one of: name, description, price, currency, or done"
+          );
+        }
+
+        modificationData.step = fieldChoice;
+        modificationData.currentField = fieldChoice;
+
+        let prompt = "";
+        switch (fieldChoice) {
+          case "name":
+            prompt = "Please enter the new product name:";
+            break;
+          case "description":
+            prompt = "Please enter the new product description:";
+            break;
+          case "price":
+            prompt = "Please enter the new product price (e.g., 99.99):";
+            break;
+          case "currency":
+            prompt = "Please enter the new currency (USD, EUR, GBP, INR):";
+            break;
+        }
+
+        ctx.reply(
+          `✅ Field selected: ${fieldChoice}\n\n` +
+            `**Step:** Enter new ${fieldChoice}\n` +
+            prompt
+        );
+        break;
+
+      case "name":
+        if (text.trim().length < 2) {
+          return ctx.reply(
+            "❌ Product name must be at least 2 characters long.\n\nPlease enter the new product name:"
+          );
+        }
+        modifications.title = text.trim();
+        modificationData.step = "field";
+        ctx.reply(
+          `✅ New name: ${modifications.title}\n\n` +
+            `**What would you like to modify next?**\n` +
+            `• Type "name" to change the product name\n` +
+            `• Type "description" to change the description\n` +
+            `• Type "price" to change the price\n` +
+            `• Type "currency" to change the currency\n` +
+            `• Type "done" when finished`
+        );
+        break;
+
+      case "description":
+        if (text.trim().length < 5) {
+          return ctx.reply(
+            "❌ Description must be at least 5 characters long.\n\nPlease enter the new product description:"
+          );
+        }
+        modifications.description = text.trim();
+        modificationData.step = "field";
+        ctx.reply(
+          `✅ New description: ${modifications.description}\n\n` +
+            `**What would you like to modify next?**\n` +
+            `• Type "name" to change the product name\n` +
+            `• Type "description" to change the description\n` +
+            `• Type "price" to change the price\n` +
+            `• Type "currency" to change the currency\n` +
+            `• Type "done" when finished`
+        );
+        break;
+
+      case "price":
+        if (!validateAmount(text)) {
+          return ctx.reply(
+            "❌ Invalid price. Please enter a valid number between 1 and 1,000,000.\n\nPlease enter the new product price:"
+          );
+        }
+        modifications.amount = parseFloat(text);
+        modificationData.step = "field";
+        ctx.reply(
+          `✅ New price: ${modifications.amount}\n\n` +
+            `**What would you like to modify next?**\n` +
+            `• Type "name" to change the product name\n` +
+            `• Type "description" to change the description\n` +
+            `• Type "price" to change the price\n` +
+            `• Type "currency" to change the currency\n` +
+            `• Type "done" when finished`
+        );
+        break;
+
+      case "currency":
+        if (!validateCurrency(text)) {
+          return ctx.reply(
+            "❌ Unsupported currency. Supported: USD, EUR, GBP, INR\n\nPlease enter the new currency:"
+          );
+        }
+        modifications.currency = text.toUpperCase();
+        modificationData.step = "field";
+        ctx.reply(
+          `✅ New currency: ${modifications.currency}\n\n` +
+            `**What would you like to modify next?**\n` +
+            `• Type "name" to change the product name\n` +
+            `• Type "description" to change the description\n` +
+            `• Type "price" to change the price\n` +
+            `• Type "currency" to change the currency\n` +
+            `• Type "done" when finished`
+        );
+        break;
+
+      default:
+        ctx.reply(
+          "❌ Invalid step. Please start over with /modifyproduct command."
+        );
+    }
+  } catch (error) {
+    console.error("Error in product modification:", error);
+    ctx.reply("❌ Failed to modify product. Please try again later.");
+  }
+}

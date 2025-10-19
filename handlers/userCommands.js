@@ -28,6 +28,69 @@ export async function handleProductsCommand(ctx, productManager) {
   }
 }
 
+export async function handleModifyProductCommand(
+  ctx,
+  productManager,
+  dataStorage
+) {
+  const userId = ctx.from.id;
+  const args = ctx.message.text.split(" ").slice(1);
+
+  console.log(`User ${userId} initiated product modification with args:`, args);
+
+  if (args.length === 0) {
+    return ctx.reply(
+      '❌ Invalid format. Use: /modifyproduct <product_name>\nExample: /modifyproduct "Premium Plan"\n\nUse /products to see available products.'
+    );
+  }
+
+  // Join all arguments to handle product names with spaces
+  const productName = args.join(" ");
+
+  try {
+    // Find product by name (case-sensitive)
+    const products = await productManager.getAllProducts();
+    const product = products.find((p) => p.title === productName);
+
+    if (!product) {
+      return ctx.reply(
+        `❌ Product "${productName}" not found.\n\n` +
+          `Use /products to see available products.\n` +
+          `Note: Product names are case-sensitive.`
+      );
+    }
+
+    // Store product modification data
+    dataStorage.userProductModification.set(userId, {
+      productId: product._id,
+      productName: product.title,
+      step: "field",
+      modifications: {},
+    });
+
+    console.log(
+      `Starting product modification for user ${userId}, product: ${product.title}`
+    );
+
+    ctx.reply(
+      `🔧 **Modify Product:**\n\n` +
+        `📝 **Current Name:** ${product.title}\n` +
+        `💰 **Current Price:** ${product.amount} ${product.currency}\n` +
+        `📄 **Current Description:** ${product.description}\n\n` +
+        `**What would you like to modify?**\n` +
+        `• Type "name" to change the product name\n` +
+        `• Type "description" to change the description\n` +
+        `• Type "price" to change the price\n` +
+        `• Type "currency" to change the currency\n` +
+        `• Type "done" when finished\n\n` +
+        `**Current Step:** Choose field to modify`
+    );
+  } catch (error) {
+    console.error("Error processing modify command:", error);
+    ctx.reply("❌ Failed to process modification. Please try again later.");
+  }
+}
+
 export async function handleBuyCommand(ctx, productManager, dataStorage) {
   const userId = ctx.from.id;
   const args = ctx.message.text.split(" ").slice(1);
@@ -254,6 +317,7 @@ export async function handleStartCommand(ctx, adminManager) {
       welcomeMessage +=
         `**Admin Commands:**\n` +
         `• /addproduct - Add new product\n` +
+        `• /modifyproduct <product_name> - Modify product name, description, or price\n` +
         `• /deleteproduct <product_name> - Delete product by name\n` +
         `• /listproducts - List all products\n\n`;
     }
@@ -313,6 +377,7 @@ export async function handleHelpCommand(ctx, adminManager) {
       helpMessage +=
         `**Admin Commands:**\n` +
         `• /addproduct - Add new product\n` +
+        `• /modifyproduct <product_name> - Modify product name, description, or price\n` +
         `• /deleteproduct <product_name> - Delete product by name\n` +
         `• /listproducts - List all products\n\n`;
     }
