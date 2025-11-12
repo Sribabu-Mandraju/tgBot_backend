@@ -27,10 +27,13 @@ BASE_URL=https://your-domain.com
 # Telegram Bot Configuration
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
 
-# Ragapay Configuration
-RAGAPAY_TEST_KEY=your_ragapay_test_key_here
-RAGAPAY_PASSWORD=your_ragapay_password_here
-RAGAPAY_ENDPOINT=https://checkout.ragapay.com/api/v1/session
+# Readies Configuration
+READIES_MERCHANT_EMAIL=your_readies_merchant_email_here
+READIES_PUBLIC_KEY=your_readies_public_key_here
+READIES_PRIVATE_KEY=your_readies_private_key_here
+READIES_IPN_SECRET=your_readies_ipn_secret_here
+READIES_AUTHORIZE_ENDPOINT=https://api.readies.biz/api/get_authorized_token
+READIES_TRANSACTION_ENDPOINT=https://api.readies.biz/api/create_transaction
 
 # Admin Configuration
 MASTER_ADMIN_ID=your_telegram_user_id_here
@@ -67,7 +70,9 @@ The application uses three main collections:
 - **amount**: Number - Payment amount
 - **currency**: String - Payment currency
 - **status**: String (enum: "pending", "completed", "failed", "cancelled")
-- **checkoutUrl**: String - Ragapay checkout URL
+- **invoiceId**: String (optional) - Invoice identifier sent to Readies
+- **checkoutUrl**: String - Readies payment link
+- **gateway**: String - Payment gateway identifier (`readies`)
 - **productId**: ObjectId (optional) - Reference to Product
 - **productName**: String (optional) - Product name
 - **transactionId**: String (optional) - Transaction ID

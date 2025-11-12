@@ -332,6 +332,7 @@ export function createDataStorage() {
         // Also store in memory for quick access
         this.userSessions.set(paymentData.userId, {
           orderNumber: payment.orderNumber,
+          invoiceId: payment.invoiceId || payment.orderNumber,
           amount: payment.amount,
           currency: payment.currency,
           status: payment.status,
@@ -340,6 +341,10 @@ export function createDataStorage() {
           productName: payment.productName,
           createdAt: payment.createdAt,
           _id: payment._id,
+          paymentId: payment.paymentId,
+          transactionId: payment.transactionId,
+          gateway: payment.gateway,
+          gatewayMeta: payment.gatewayMeta || null,
         });
 
         console.log(`Payment session created: ${payment.orderNumber}`);

@@ -9,7 +9,7 @@ import {
   validateAmount,
   validateCurrency,
 } from "../utils.js";
-import { createPaymentSession } from "../ragapay.js";
+import { createPaymentLink } from "../readies.js";
 import { ADDRESS_STEPS, PRODUCT_STEPS, SUCCESS_MESSAGES } from "../config.js";
 
 // ============================================================================
@@ -111,7 +111,31 @@ export function handleAddressCollection(
 
       // Address collection complete, create payment session
       console.log(`Address collection completed for user ${userId}:`, address);
-      createPaymentSession(ctx, userId, addressData, dataStorage);
+      createPaymentLink(ctx, userId, addressData, dataStorage)
+        .then((result) => {
+          const amountText =
+            addressData.amount && addressData.currency
+              ? `${addressData.amount} ${addressData.currency}`
+              : "See invoice for amount";
+          ctx.reply(
+            `💳 **Payment Link Ready!**\n\n` +
+              `Amount: ${amountText}\n` +
+              `Order: ${result.orderNumber}\n` +
+              `Invoice: ${result.invoiceId}\n\n` +
+              `🔗 **Click to pay:**\n${result.paymentUrl}\n\n` +
+              `Use /status to track this payment.`
+          );
+        })
+        .catch((error) => {
+          console.error(
+            "Error creating payment link after address collection:",
+            error
+          );
+          ctx.reply(
+            "❌ Failed to create payment session. Please try again later.\n" +
+              "If the problem persists, contact support."
+          );
+        });
       break;
 
     default:
@@ -273,7 +297,7 @@ export async function handleProductModification(
                 updatedProduct.updatedAt
               ).toLocaleString()}`
           );
-          break;  
+          break;
         }
 
         if (

@@ -7,7 +7,7 @@ tgBot_backend/
 ├── 📄 index.js                 # 🚀 Main entry point & bot initialization
 ├── ⚙️ config.js               # 🔧 Configuration & constants
 ├── 🛠️ utils.js                # 🔨 Utility functions & managers
-├── 💳 ragapay.js              # 💰 Payment gateway integration
+├── 💳 readies.js              # 💰 Payment gateway integration
 ├── 🌐 routes.js               # 🛣️ Express routes & webhooks
 ├── 📁 handlers/               # 🤖 Bot command handlers
 │   ├── 👤 userCommands.js     # 👥 User-facing commands
@@ -21,7 +21,7 @@ tgBot_backend/
 ## 🔄 Data Flow
 
 ```
-User Message → index.js → handlers/ → utils.js → ragapay.js
+User Message → index.js → handlers/ → utils.js → readies.js
      ↓              ↓         ↓         ↓         ↓
 Telegram API → Bot Logic → Validation → Payment → Response
 ```
@@ -44,7 +44,7 @@ Telegram API → Bot Logic → Validation → Payment → Response
 - **Contains**:
   - Environment variables
   - Bot configuration
-  - Ragapay settings
+  - Readies settings
   - Validation constants
   - Error messages
   - Success messages
@@ -60,7 +60,7 @@ Telegram API → Bot Logic → Validation → Payment → Response
   - Data storage
   - Message formatting
 
-### 💳 ragapay.js
+### 💳 readies.js
 
 - **Purpose**: Payment gateway integration
 - **Contains**:
@@ -102,7 +102,7 @@ Telegram API → Bot Logic → Validation → Payment → Response
 
 - `config.js` → All modules
 - `utils.js` → All handlers
-- `ragapay.js` → Payment processing
+- `readies.js` → Payment processing
 - `handlers/` → Command processing
 - `routes.js` → Web endpoints
 
@@ -137,7 +137,7 @@ Telegram API → Bot Logic → Validation → Payment → Response
 1. **Configuration Changes**: Update `config.js`
 2. **New Utilities**: Add to `utils.js`
 3. **New Commands**: Add to appropriate handler file
-4. **Payment Changes**: Modify `ragapay.js`
+4. **Payment Changes**: Modify `readies.js`
 5. **Route Changes**: Update `routes.js`
 6. **Main Logic**: Update `index.js` as needed
 

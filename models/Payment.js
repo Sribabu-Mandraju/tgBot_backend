@@ -20,6 +20,12 @@ const paymentSchema = new mongoose.Schema({
     unique: true,
     index: true,
   },
+  invoiceId: {
+    type: String,
+    required: false,
+    index: true,
+    default: null,
+  },
   amount: {
     type: Number,
     required: true,
@@ -104,11 +110,26 @@ const paymentSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  gateway: {
+    type: String,
+    default: "readies",
+  },
+  gatewayMeta: {
+    original_amount: { type: Number, default: null },
+    original_currency: { type: String, default: null },
+    selected_amount: { type: Number, default: null },
+    selected_currency: { type: String, default: null },
+    confirms_needed: { type: Number, default: null },
+    timeout: { type: Number, default: null },
+  },
 });
 
 // Update the updatedAt field before saving
 paymentSchema.pre("save", function (next) {
   this.updatedAt = Date.now();
+  if (!this.invoiceId) {
+    this.invoiceId = this.orderNumber;
+  }
   if (this.status === "completed" && !this.completedAt) {
     this.completedAt = Date.now();
   }
@@ -118,6 +139,7 @@ paymentSchema.pre("save", function (next) {
 // Indexes for better query performance
 paymentSchema.index({ userId: 1, createdAt: -1 });
 paymentSchema.index({ orderNumber: 1 });
+paymentSchema.index({ invoiceId: 1 });
 paymentSchema.index({ status: 1 });
 paymentSchema.index({ createdAt: -1 });
 
@@ -135,6 +157,12 @@ paymentSchema.statics.findActiveByUserId = function (userId) {
 
 paymentSchema.statics.findByOrderNumber = function (orderNumber) {
   return this.findOne({ orderNumber });
+};
+
+paymentSchema.statics.findByInvoiceId = function (invoiceId) {
+  return this.findOne({
+    $or: [{ invoiceId }, { orderNumber: invoiceId }],
+  });
 };
 
 paymentSchema.statics.updatePaymentStatus = function (
@@ -160,7 +188,11 @@ paymentSchema.statics.updatePaymentStatus = function (
     updateData.completedAt = Date.now();
   }
 
-  return this.findOneAndUpdate({ orderNumber }, updateData, { new: true });
+  return this.findOneAndUpdate(
+    { $or: [{ orderNumber }, { invoiceId: orderNumber }] },
+    updateData,
+    { new: true }
+  );
 };
 
 paymentSchema.statics.getPaymentStats = function () {

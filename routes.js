@@ -5,20 +5,33 @@
 import express from "express";
 import { SERVER_CONFIG } from "./config.js";
 import { Payment } from "./models/index.js";
+import { verifyIpnSignature, mapReadiesStatus } from "./readies.js";
 
 // Helper function to identify user from payment callback
 async function identifyUserFromCallback(queryParams) {
-  const { payment_id, trans_id, order_id, user_id } = queryParams;
+  const { payment_id, trans_id, order_id, user_id, invoice_id } = queryParams;
 
   console.log("🔍 Identifying user from callback parameters:", queryParams);
 
-  // Method 1: Direct order lookup (most reliable)
+  // Method 1: Invoice ID lookup
+  const effectiveInvoice = invoice_id || order_id;
+  if (effectiveInvoice) {
+    console.log(
+      `📋 Looking up payment by invoice/order id: ${effectiveInvoice}`
+    );
+    const payment = await Payment.findByInvoiceId(effectiveInvoice);
+    if (payment) {
+      console.log(`✅ Found payment for user: ${payment.userId}`);
+      return { userId: payment.userId, payment, method: "invoice_id" };
+    }
+  }
+
   if (order_id) {
     console.log(`📋 Looking up payment by order_id: ${order_id}`);
     const payment = await Payment.findByOrderNumber(order_id);
     if (payment) {
       console.log(`✅ Found payment for user: ${payment.userId}`);
-      return { userId: payment.userId, payment: payment, method: "order_id" };
+      return { userId: payment.userId, payment, method: "order_id" };
     }
   }
 
@@ -118,29 +131,42 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
   const router = express.Router();
 
   // Health check endpoint
-  router.get("/health", (req, res) => {
-    const healthData = {
-      status: "OK",
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      memory: process.memoryUsage(),
-      environment: SERVER_CONFIG.NODE_ENV,
-      bot: {
-        isRunning: !!bot,
-        totalUsers: dataStorage.userSessions.size,
-        activeAddressCollections: dataStorage.userAddressCollection.size,
-        activeProductCreations: dataStorage.userProductSelection.size,
-      },
-      products: {
-        total: productManager.getProductCount(),
-      },
-      admins: {
-        total: adminManager.getAllAdmins().length,
-        masterAdmin: adminManager.getMasterAdminId(),
-      },
-    };
+  router.get("/health", async (req, res) => {
+    try {
+      const [productCount, adminList, masterAdminId] = await Promise.all([
+        productManager.getProductCount(),
+        adminManager.getAllAdmins(),
+        adminManager.getMasterAdminId(),
+      ]);
 
-    res.json(healthData);
+      const healthData = {
+        status: "OK",
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        environment: SERVER_CONFIG.NODE_ENV,
+        bot: {
+          isRunning: !!bot,
+          totalUsers: dataStorage.userSessions.size,
+          activeAddressCollections: dataStorage.userAddressCollection.size,
+          activeProductCreations: dataStorage.userProductSelection.size,
+        },
+        products: {
+          total: productCount,
+        },
+        admins: {
+          total: adminList.length,
+          masterAdmin: masterAdminId,
+        },
+      };
+
+      res.json(healthData);
+    } catch (error) {
+      console.error("Health endpoint error:", error);
+      res
+        .status(500)
+        .json({ status: "ERROR", message: "Unable to fetch health data" });
+    }
   });
 
   // Root endpoint
@@ -152,8 +178,7 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
       endpoints: {
         health: "/health",
         telegram_webhook: "/webhook/telegram",
-        ragapay_webhook: "/webhook/ragapay",
-        ragapay_callback: "/callback/ragapay",
+        readies_webhook: "/webhook/readies",
         payment_success: "/payment/success",
         payment_cancel: "/payment/cancel",
         manual_update: "/manual-status-update",
@@ -172,160 +197,59 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
     }
   });
 
-  // Ragapay webhook endpoint for payment status updates
-  router.post("/webhook/ragapay", async (req, res) => {
+  // Readies IPN webhook
+  router.post("/webhook/readies", async (req, res) => {
     try {
-      console.log("=== RAGAPAY WEBHOOK RECEIVED ===");
+      console.log("=== READIES IPN RECEIVED ===");
       console.log("Headers:", JSON.stringify(req.headers, null, 2));
       console.log("Body:", JSON.stringify(req.body, null, 2));
       console.log("=================================");
 
-      // Handle different possible webhook formats
-      let orderNumber, status, transactionId;
+      const signature =
+        req.body?.sign ||
+        req.body?.key ||
+        req.headers["x-readies-signature"] ||
+        req.headers["x-signature"];
 
-      // Format 1: Direct order and status
-      if (req.body.order && req.body.status) {
-        orderNumber = req.body.order.number;
-        status = req.body.status;
-        transactionId = req.body.transaction_id;
-      }
-      // Format 2: Nested in data
-      else if (req.body.data && req.body.data.order) {
-        orderNumber = req.body.data.order.number;
-        status = req.body.data.status;
-        transactionId = req.body.data.transaction_id;
-      }
-      // Format 3: Direct fields
-      else if (req.body.order_number && req.body.payment_status) {
-        orderNumber = req.body.order_number;
-        status = req.body.payment_status;
-        transactionId = req.body.transaction_id;
-      }
-      // Format 4: Alternative field names
-      else if (req.body.orderNumber && req.body.status) {
-        orderNumber = req.body.orderNumber;
-        status = req.body.status;
-        transactionId = req.body.transactionId;
-      } else {
-        console.error("Unknown webhook format:", req.body);
-        return res.status(400).json({ error: "Unknown webhook format" });
+      if (!verifyIpnSignature(signature)) {
+        console.error("Invalid IPN signature");
+        return res.status(400).json({ error: "Invalid signature" });
       }
 
-      if (!orderNumber || !status) {
-        console.error(
-          "Missing required fields - orderNumber:",
-          orderNumber,
-          "status:",
-          status
-        );
-        return res.status(400).json({ error: "Missing required fields" });
+      const orderNumber = req.body.invoice_id || req.body.order_id;
+      if (!orderNumber) {
+        console.error("Missing invoice_id/order_id in IPN payload");
+        return res.status(400).json({ error: "Missing invoice identifier" });
       }
 
-      console.log(
-        `Processing webhook - Order: ${orderNumber}, Status: ${status}`
-      );
+      const status = mapReadiesStatus(req.body.status ?? req.body.resultCode);
 
-      // Update payment status in database
       const updatedPayment = await dataStorage.updatePaymentStatus(
         orderNumber,
-        status.toLowerCase(),
-        transactionId,
-        paymentId
+        status,
+        req.body.txn_id,
+        req.body.payment_id
       );
 
       if (!updatedPayment) {
-        console.error("User session not found for order:", orderNumber);
-        return res.status(404).json({ error: "User session not found" });
+        console.error("Payment session not found for order:", orderNumber);
+        return res.status(404).json({ error: "Payment not found" });
       }
 
       console.log(
         `Payment status updated for user ${updatedPayment.userId}: ${status}`
       );
 
-      // Send notification to user
-      const statusMessage = getPaymentStatusMessage(updatedPayment, status);
-      bot.telegram.sendMessage(updatedPayment.userId, statusMessage);
-
-      res.status(200).json({ status: "OK" });
-    } catch (error) {
-      console.error("Ragapay webhook error:", error);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
-
-  // Ragapay callback endpoint (based on official documentation)
-  router.post("/callback/ragapay", async (req, res) => {
-    try {
-      console.log("=== RAGAPAY CALLBACK RECEIVED ===");
-      console.log("Headers:", JSON.stringify(req.headers, null, 2));
-      console.log("Body:", JSON.stringify(req.body, null, 2));
-      console.log("=================================");
-
-      // According to Ragapay docs, callback contains:
-      // payment_id, trans_id, order_id, amount, currency, description, hash
-      const {
-        payment_id,
-        trans_id,
-        order_id,
-        amount,
-        currency,
-        description,
-        hash,
-        payment_status,
-        status,
-      } = req.body;
-
-      if (!order_id) {
-        console.error("Missing order_id in callback:", req.body);
-        return res.status(400).json({ error: "Missing order_id" });
-      }
-
-      console.log(
-        `Processing callback - Order: ${order_id}, Payment ID: ${payment_id}`
-      );
-
-      // Determine status based on callback data
-      let newStatus = "completed"; // Default to completed for successful callbacks
-      if (payment_status) {
-        newStatus = payment_status.toLowerCase();
-      } else if (status) {
-        newStatus = status.toLowerCase();
-      }
-
-      // Update payment status in database
-      const updatedPayment = await dataStorage.updatePaymentStatus(
-        order_id,
-        newStatus,
-        trans_id,
-        payment_id
-      );
-
-      if (!updatedPayment) {
-        console.error("User session not found for order:", order_id);
-        return res.status(404).json({ error: "User session not found" });
-      }
-
-      console.log(
-        `Payment status updated for user ${updatedPayment.userId}: ${newStatus}`
-      );
-
-      // Send notification to user
       try {
-        const statusMessage = getPaymentStatusMessage(
-          updatedPayment,
-          newStatus
-        );
-        bot.telegram.sendMessage(updatedPayment.userId, statusMessage);
-        console.log(`Notification sent to user ${updatedPayment.userId}`);
+        const statusMessage = getPaymentStatusMessage(updatedPayment, status);
+        await bot.telegram.sendMessage(updatedPayment.userId, statusMessage);
       } catch (notifyError) {
         console.error("Failed to send notification:", notifyError);
       }
 
-      res
-        .status(200)
-        .json({ status: "OK", message: "Callback processed successfully" });
+      res.status(200).json({ status: "OK" });
     } catch (error) {
-      console.error("Ragapay callback error:", error);
+      console.error("Readies IPN error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -570,8 +494,7 @@ export function createRoutes(bot, dataStorage, productManager, adminManager) {
         "/",
         "/health",
         "/webhook/telegram",
-        "/webhook/ragapay",
-        "/callback/ragapay",
+        "/webhook/readies",
         "/payment/success",
         "/payment/cancel",
         "/manual-status-update",

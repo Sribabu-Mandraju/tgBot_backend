@@ -26,18 +26,21 @@ export const MONGODB_CONFIG = {
 
 // Telegram Bot Configuration
 export const BOT_CONFIG = {
-  TOKEN:
-    process.env.TELEGRAM_BOT_TOKEN ||
-    "8414140800:AAGD3rLf9xNqxr_Ps08HIsoByMDV4wwNxBE",
+  TOKEN: process.env.TELEGRAM_BOT_TOKEN || "",
 };
 
-// Ragapay Configuration
-export const RAGAPAY_CONFIG = {
-  key: process.env.RAGAPAY_TEST_KEY || "63027294-a04c-11f0-a710-0ee5bf94a9b3",
-  password: process.env.RAGAPAY_PASSWORD || "62f0c985b6dd21945ded2f0aba81f21f",
-  endpoint:
-    process.env.RAGAPAY_ENDPOINT ||
-    "https://checkout.ragapay.com/api/v1/session",
+// Readies Configuration
+export const READIES_CONFIG = {
+  merchantEmail: process.env.READIES_MERCHANT_EMAIL || "",
+  publicKey: process.env.READIES_PUBLIC_KEY || "",
+  privateKey: process.env.READIES_PRIVATE_KEY || "",
+  ipnSecret: process.env.READIES_IPN_SECRET || "",
+  authorizeEndpoint:
+    process.env.READIES_AUTHORIZE_ENDPOINT ||
+    "https://api.readies.biz/api/get_authorized_token",
+  transactionEndpoint:
+    process.env.READIES_TRANSACTION_ENDPOINT ||
+    "https://api.readies.biz/api/create_transaction",
 };
 
 // Admin Configuration

@@ -8,7 +8,7 @@ import {
   formatProductListMessage,
   formatPaymentStatusMessage,
 } from "../utils.js";
-import { createPaymentSession } from "../ragapay.js";
+import { createPaymentLink } from "../readies.js";
 import { ERROR_MESSAGES, DEFAULT_ADDRESS } from "../config.js";
 
 // ============================================================================
@@ -156,7 +156,21 @@ export async function handleBuyCommand(ctx, productManager, dataStorage) {
     };
 
     // Create payment session directly
-    await createPaymentSession(ctx, userId, paymentData, dataStorage);
+    const result = await createPaymentLink(
+      ctx,
+      userId,
+      paymentData,
+      dataStorage
+    );
+
+    ctx.reply(
+      `💳 **Payment Link Ready!**\n\n` +
+        `Amount: ${product.amount} ${product.currency}\n` +
+        `Order: ${result.orderNumber}\n` +
+        `Invoice: ${result.invoiceId}\n\n` +
+        `🔗 **Click to pay:**\n${result.paymentUrl}\n\n` +
+        `Use /status to track this payment.`
+    );
   } catch (error) {
     console.error("Error processing buy command:", error);
     ctx.reply("❌ Failed to process purchase. Please try again later.");
@@ -200,23 +214,29 @@ export async function handlePayCommand(ctx, dataStorage) {
   const amount = parseFloat(amountStr);
   const currencyUpper = currency.toUpperCase();
 
-  // Create payment session directly with default address
   console.log(
-    `Creating direct payment session for user ${userId}, amount: ${amount} ${currencyUpper}${
+    `Creating Readies payment link for user ${userId}, amount: ${amount} ${currencyUpper}${
       description ? `, description: "${description}"` : ""
     }`
   );
 
-  // Create payment data object with default address
   const paymentData = {
     amount,
     currency: currencyUpper,
-    description: description,
-    address: DEFAULT_ADDRESS, // Use default address
+    description,
+    address: DEFAULT_ADDRESS,
   };
 
-  // Create payment session directly
-  await createPaymentSession(ctx, userId, paymentData, dataStorage);
+  const result = await createPaymentLink(ctx, userId, paymentData, dataStorage);
+
+  ctx.reply(
+    `💳 **Payment Link Ready!**\n\n` +
+      `Amount: ${amount} ${currencyUpper}\n` +
+      `Order: ${result.orderNumber}\n` +
+      `Invoice: ${result.invoiceId}\n\n` +
+      `🔗 **Click to pay:**\n${result.paymentUrl}\n\n` +
+      `Use /status to track this payment.`
+  );
 }
 
 export async function handleStatusCommand(ctx, dataStorage) {
@@ -263,7 +283,7 @@ export async function handleRefreshStatusCommand(ctx, dataStorage) {
       "\n\n🔄 **Status Updates:**\n" +
       "• Status updates automatically via webhooks\n" +
       "• If payment completed but shows pending, webhook may be delayed\n" +
-      "• You can check payment status directly on Ragapay checkout page\n\n" +
+      "• You can open the Readies payment link at any time to confirm status\n\n" +
       "💡 **Note:** Payment status should update within a few minutes of completion.";
 
     ctx.reply(message);
@@ -324,7 +344,7 @@ export async function handleStartCommand(ctx, adminManager) {
     }
 
     welcomeMessage +=
-      `I can help you process payments securely using Ragapay.\n\n` +
+      `I can help you process payments securely using Readies.\n\n` +
       `Available commands:\n` +
       `• /help - Show help message\n` +
       `• /products - View available products\n` +
@@ -355,10 +375,9 @@ export async function handleStartCommand(ctx, adminManager) {
       `Examples: /buy Premium Plan or /pay 100 USD "Service fee"\n\n` +
       `💡 **Payment Process:**\n` +
       `1. Choose product or direct payment\n` +
-      `2. Complete payment on checkout page\n\n` +
+      `2. Complete checkout via the Readies payment link\n\n` +
       `💳 **Payment Methods:**\n` +
-      `• Credit/Debit Cards (All devices)\n` +
-      `• Apple Pay (iPhone/iPad/Mac only)\n\n` +
+      `• Depends on your Readies merchant configuration\n\n` +
       `📝 **Note:** Product names are case-insensitive!`;
 
     ctx.reply(welcomeMessage);
@@ -416,10 +435,9 @@ export async function handleHelpCommand(ctx, adminManager) {
     helpMessage +=
       `💡 **Payment Process:**\n` +
       `1. Choose product or direct payment\n` +
-      `2. Complete payment on checkout page\n\n` +
+      `2. Complete checkout via the Readies payment link\n\n` +
       `💳 **Supported Payment Methods:**\n` +
-      `• Credit/Debit Cards (All devices)\n` +
-      `• Apple Pay (iPhone/iPad/Mac only)`;
+      `• Depends on your Readies merchant configuration`;
 
     ctx.reply(helpMessage);
   } catch (error) {
